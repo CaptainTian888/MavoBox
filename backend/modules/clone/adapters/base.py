@@ -99,13 +99,59 @@ class Client:
         except Exception:
             raise Fatal('Provider 返回无效或含敏感信息的数据') from None
 
+    def max_download_bytes(self):
+        try: value = int(self.extra.get('max_download_bytes', 500 * 1024 * 1024))
+        except (TypeError, ValueError): value = 500 * 1024 * 1024
+        return max(1024 * 1024, min(value, 4 * 1024 ** 3))
+
+    def check_result_url(self, url):
+        """Provider-returned URLs must be http(s), carry no credentials and not point at this machine
+        or a private network (blind SSRF). A URL on the provider's own host stays allowed so a
+        user-run local model can serve its results."""
+        import ipaddress
+        parsed = urlsplit(url)
+        if parsed.scheme not in ('https', 'http') or not parsed.hostname or parsed.username or parsed.password:
+            raise Fatal('结果地址无效')
+        if parsed.netloc == urlsplit(self.base).netloc:
+            return
+        host = parsed.hostname.lower().rstrip('.')
+        if host == 'localhost' or host.endswith('.localhost'):
+            raise Fatal('结果地址不得指向本机或内网')
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            return
+        if (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+                or ip.is_multicast or ip.is_unspecified):
+            raise Fatal('结果地址不得指向本机或内网')
+
     def download(self, url, dest, verify=True):
         from core.ffmpeg import probe
         dest = Path(dest)
+        limit = self.max_download_bytes()
         try:
-            response = self.request('GET', url, authenticated=False)
+            self.check_result_url(url)
             self.check()
-            dest.write_bytes(response.content)
+            owned = self.client is None
+            client = self.client or httpx.Client(timeout=httpx.Timeout(90, connect=10), transport=self.transport, follow_redirects=False)
+            try:
+                with client.stream('GET', url) as response:
+                    if not 200 <= response.status_code < 300:
+                        raise Fatal('结果下载失败，请检查 Provider 返回的地址')
+                    declared = response.headers.get('content-length')
+                    if declared and declared.isdigit() and int(declared) > limit:
+                        raise Fatal('结果文件超过大小上限')
+                    total = 0
+                    with dest.open('wb') as out:
+                        for chunk in response.iter_bytes(65536):
+                            self.check()
+                            total += len(chunk)
+                            if total > limit: raise Fatal('结果文件超过大小上限')
+                            out.write(chunk)
+            except (httpx.TimeoutException, httpx.TransportError):
+                raise Transient('结果下载连接失败或超时') from None
+            finally:
+                if owned: client.close()
             if verify: probe(dest)
             self.check()
         except BaseException:

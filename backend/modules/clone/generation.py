@@ -87,11 +87,21 @@ class Generator:
         root = self.s.get(p['parent_id']) if p['parent_id'] else p
         spent = self.s.db.one('SELECT COALESCE(SUM(spent_usd),0) AS n FROM clone_projects WHERE id=? OR parent_id=?',(root['id'],root['id']))['n']
         reserved = self.s.db.one('SELECT COALESCE(SUM(amount),0) AS n FROM clone_reservations WHERE root_id=?',(root['id'],))['n']
-        return dict(items=items,known_total_usd=round(total,6),unknown=unknown,total_usd=None if unknown else round(total,6),
+        return dict(items=items,quote_usd=round(total,6),known_total_usd=round(total,6),unknown=unknown,total_usd=None if unknown else round(total,6),
                     budget_usd=root['budget_usd'],spent_usd=spent,reserved_usd=reserved,
                     over_budget=root['budget_usd'] is not None and spent+reserved+total > root['budget_usd'],
                     requires_confirmation=unknown or total > 0,
                     note='本次生成阶段估算；共享已花费包含分析/规划的保守估算。未知单价无法保证实际总额，已提交请求按估算保守计费，并非供应商实际账单。')
+
+    @staticmethod
+    def precheck(prompt, duration, paths):
+        """Validate local inputs before any paid call so a local failure never leaves a charged 'unknown' row."""
+        import os
+        if not str(prompt).strip() or not 0 < duration <= 3600:
+            raise ValueError('提示词为空或时长无效')
+        for path in paths:
+            if not os.path.isfile(path) or not os.access(path, os.R_OK):
+                raise ValueError('参考图不存在或不可读')
 
     def stage_estimate(self,p,operation):
         provider=self.s.provider(p,'llm',True)
@@ -158,6 +168,8 @@ class Generator:
                     (uuid4().hex,p['id'],op['shot_id'],op['kind'],op['provider']['id'],json.dumps(op['params'],ensure_ascii=False),
                      cached['path'],op['cache_key'],cached['metadata'],now()))
                 return
+            if not force and not replacement and db.one("SELECT id FROM generated_media WHERE cache_key=? AND status='unknown' LIMIT 1", (op['cache_key'],)):
+                raise ValueError('同一请求在其他项目中存在结果未知的提交；请先核查 Provider 账单，再明确选择重生成')
             pending = None if force or replacement else db.one('''SELECT * FROM generated_media
                 WHERE cache_key=? AND project_id=? AND status IN ('submitted','failed','unknown') ORDER BY created_at DESC LIMIT 1''',
                 (op['cache_key'],p['id']))
@@ -189,10 +201,12 @@ class Generator:
                         shutil.copyfile(asset['path'],target)
                     metadata['replacement_asset_id'] = replacement
                 elif op['kind']=='anchor':
+                    references=op['params'].get('assets',[op['params'].get('asset')])
+                    paths=[self.s.asset(a)['path'] for a in references]
+                    self.precheck(op['params']['prompt'],1,paths)
                     db.execute("UPDATE generated_media SET status='unknown' WHERE id=?",(media_id,))
                     self.charge(p,op)
-                    references=op['params'].get('assets',[op['params'].get('asset')])
-                    client.generate(op['params']['prompt'],[self.s.asset(a)['path'] for a in references],target)
+                    client.generate(op['params']['prompt'],paths,target)
                 elif op['kind']=='video':
                     shot = op['params']['shot']
                     refs = []
@@ -208,6 +222,7 @@ class Generator:
                     else:
                         if pending and pending['job']: job = json.loads(pending['job'])
                         else:
+                            self.precheck(shot['prompt'],shot['duration'],refs)
                             db.execute("UPDATE generated_media SET status='unknown' WHERE id=?",(media_id,))
                             self.charge(p,op)
                             job = client.submit(refs,shot['prompt'] + '\nCamera: ' + shot['camera'] + '\nNo speech, no captions.',
@@ -229,7 +244,10 @@ class Generator:
                     duration = probe(target)['duration']
                     words = op['params']['segment']['words']
                     asr = self.s.adapter(p,'asr',cancelled,required=False)
-                    recognized = asr.transcribe(target,duration,p['brief']['language']) if asr else []
+                    try:
+                        recognized = asr.transcribe(target,duration,p['brief']['language']) if asr else []
+                    except (Fatal, Transient):
+                        recognized = []
                     # Script remains authoritative. ASR defines boundaries only; never replaces its text.
                     import re
                     normalize=lambda text: re.sub(r'\W','',text).casefold()

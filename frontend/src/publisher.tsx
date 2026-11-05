@@ -25,6 +25,8 @@ function dateInput() {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 
+const NOT_POSTED_PROMPT = '该任务结果未知，可能已经发布。请先到 TikTok 确认视频未发布；确认后点“确定”继续。';
+
 export function Publisher({page}: {page: '账号' | '发布'}) {
   const [groups, setGroups] = useState<Group[]>([]);
   const [proxies, setProxies] = useState<Proxy[]>([]);
@@ -172,10 +174,10 @@ export function Publisher({page}: {page: '账号' | '发布'}) {
         {j.status === 'needs_attention' && <p>请先在账号页登录 / 人工接管，并查看数据目录 screenshots 中以任务 ID 开头的截图。确认是否已发布后，再标记完成或重试，避免重复发布。</p>}
         <button disabled={busy} onClick={() => void run(async () => {setDetail(await api<Detail>(`/publish-jobs/${j.id}`));})}>日志 / 详情</button>
         {['scheduled', 'needs_attention'].includes(j.status) && <button disabled={busy} onClick={() => void action(j.id, 'cancel')}>取消</button>}
-        {['failed', 'cancelled', 'missed', 'needs_attention'].includes(j.status) && <button disabled={busy} onClick={() => void action(j.id, 'retry')}>重试</button>}
+        {['failed', 'cancelled', 'missed', 'needs_attention'].includes(j.status) && <button disabled={busy} onClick={() => void action(j.id, 'retry', j.status === 'needs_attention' ? {confirm_not_posted: window.confirm(NOT_POSTED_PROMPT)} : undefined)}>重试</button>}
         {!['running', 'succeeded'].includes(j.status) && <button disabled={busy} onClick={() => {setReschedule(j.id); setNewDate(dateInput());}}>改期</button>}
         {j.status === 'needs_attention' && <button disabled={busy} onClick={() => void action(j.id, 'complete', {})}>人工确认已完成</button>}
-        {reschedule === j.id && <form onSubmit={e => {e.preventDefault(); void run(async () => {await api(`/publish-jobs/${j.id}/reschedule`, 'POST', {scheduled_at: new Date(newDate).toISOString()}); setReschedule(null);});}}><label>新的本机时间<input required type="datetime-local" value={newDate} onChange={e => setNewDate(e.target.value)}/></label><button disabled={busy}>保存改期</button></form>}
+        {reschedule === j.id && <form onSubmit={e => {e.preventDefault(); void run(async () => {await api(`/publish-jobs/${j.id}/reschedule`, 'POST', {scheduled_at: new Date(newDate).toISOString(), confirm_not_posted: j.status === 'needs_attention' ? window.confirm(NOT_POSTED_PROMPT) : false}); setReschedule(null);});}}><label>新的本机时间<input required type="datetime-local" value={newDate} onChange={e => setNewDate(e.target.value)}/></label><button disabled={busy}>保存改期</button></form>}
       </article>)}{!jobs.length && <p>暂无符合条件的发布任务</p>}
       {detail && <aside aria-label="发布任务日志"><h3>任务 {detail.id}</h3><p>{labels[detail.status]}</p>{detail.logs.map(l => <p key={l.id}>{new Date(l.ts).toLocaleString()} [{l.level}] {l.message}</p>)}<button onClick={() => setDetail(null)}>关闭日志</button></aside>}
     </>}

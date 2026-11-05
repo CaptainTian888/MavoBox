@@ -200,7 +200,12 @@ class CloneService:
                 if options.get('dry_run',True): return dict(dry_run=True,cost=cost,shots=p['treatment']['shots'])
                 if options.get('fallback') or options.get('replacement_asset_id'):
                     self.db.execute('INSERT OR REPLACE INTO clone_reservations VALUES (?,?,0,0)',(id,p['parent_id'] or id))
-                else: self.generator.reserve(p,options.get('confirm_budget',False),shot_id,options.get('force',False))
+                else:
+                    amount = options.get('confirm_amount')
+                    if options.get('confirm_budget') and cost['known_total_usd'] > 0 and (amount is None or amount < cost['known_total_usd'] - .005):
+                        from fastapi import HTTPException
+                        raise HTTPException(409, '报价已变化或未提供确认金额，请重新查看费用估算后再确认')
+                    self.generator.reserve(p,options.get('confirm_budget',False),shot_id,options.get('force',False))
             try:
                 self.active.add(id)
                 task=queue.create('clone_'+operation,dict(project_id=id,**options,config_fingerprint=self.fingerprint(p)),max_retries=0)
@@ -223,10 +228,11 @@ class CloneService:
         id=json.loads(task['payload'])['project_id']
         with self.lock:
             self.db.execute('DELETE FROM clone_reservations WHERE project_id=?',(id,))
-            self.active.discard(id)
             if task['status'] in ('failed','cancelled'):
                 current=self.db.one('SELECT status FROM clone_projects WHERE id=?',(id,))
                 self.update(id,status='needs_attention' if task['status']=='cancelled' or (current and current['status']=='needs_attention') else 'failed')
+            # Release the busy marker last, so anyone who sees the project idle also sees its final status.
+            self.active.discard(id)
 
     def variants(self,id,count,dimensions):
         with self.lock:
@@ -260,17 +266,29 @@ class CloneService:
             amount=sum(q['known_total_usd'] for q in quotes)
             unknown=any(q['unknown'] for q in quotes)
             quote=dict(items=[dict(item,shot_id=c['name']+'/'+item['shot_id']) for c,q in zip(children,quotes) for item in q['items']],
-                       known_total_usd=amount,total_usd=None if unknown else amount,unknown=unknown,
+                       quote_usd=round(amount,6),known_total_usd=amount,total_usd=None if unknown else amount,unknown=unknown,
                        spent_usd=quotes[0]['spent_usd'],reserved_usd=quotes[0]['reserved_usd'],
                        over_budget=root['budget_usd'] is not None and quotes[0]['spent_usd']+quotes[0]['reserved_usd']+amount>root['budget_usd'],
                        note='全部变体合计保守估算；重复素材可能命中共享缓存，生成后自动组装并渲染。')
             if options.get('dry_run',True): return dict(dry_run=True,cost=quote)
             if (unknown or amount>0 or quote['over_budget']) and not options.get('confirm_budget'):
                 raise ValueError('请先确认所有变体的合计费用与可能超支')
+            given=options.get('confirm_amount')
+            if amount>0 and (given is None or given<amount-.005):
+                from fastapi import HTTPException
+                raise HTTPException(409,'报价已变化或未提供确认金额，请重新查看费用估算后再确认')
             tasks=[]
-            for child in children:
-                tasks.append(self.enqueue(queue,child['id'],operation,dict(dry_run=False,confirm_budget=options.get('confirm_budget',False),
-                                                                          auto_assemble_render=operation=='generate')))
+            try:
+                for child in children:
+                    tasks.append(self.enqueue(queue,child['id'],operation,dict(dry_run=False,confirm_budget=options.get('confirm_budget',False),
+                                                                              confirm_amount=options.get('confirm_amount'),
+                                                                              auto_assemble_render=operation=='generate')))
+            except BaseException:
+                # All-or-nothing: cancel what was already queued so no reservation is left behind.
+                for task in tasks:
+                    try: queue.cancel(task['id'])
+                    except Exception: pass
+                raise
             return dict(tasks=tasks,cost=quote)
 
     def handler(self,operation):

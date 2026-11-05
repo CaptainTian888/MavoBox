@@ -176,7 +176,7 @@ class PublisherService:
                 self.log(identifier, warning, 'warning')
         return [dict(self.job(identifier), warnings=[MESSAGES[w] for w in warnings]) for identifier in jobs]
 
-    def action(self, identifier, action, scheduled_at=None, result_url=None):
+    def action(self, identifier, action, scheduled_at=None, result_url=None, confirm_not_posted=False):
         with self.db.connect() as con:
             con.execute('BEGIN IMMEDIATE')
             row = con.execute('SELECT * FROM publish_jobs WHERE id=?', (identifier,)).fetchone()
@@ -190,6 +190,8 @@ class PublisherService:
                     raise ValueError('只能取消等待或待人工处理的任务')
                 con.execute("UPDATE publish_jobs SET status='cancelled',finished_at=?,updated_at=? WHERE id=?", (stamp, stamp, identifier))
             elif action in ('retry', 'reschedule'):
+                if row['status'] == 'needs_attention' and not confirm_not_posted:
+                    raise ValueError('该任务结果未知，可能已经发布。请先到 TikTok 确认视频未发布后再勾选确认，或使用“标记完成”')
                 if action == 'retry' and row['status'] not in ('failed', 'needs_attention', 'missed', 'cancelled'):
                     raise ValueError('当前任务不能重试')
                 if action == 'reschedule' and row['status'] == 'succeeded':

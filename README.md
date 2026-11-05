@@ -1,4 +1,4 @@
-# TikTol M2
+# MAVO BOX
 
 FastAPI + SQLite 后端和 React / TypeScript / Vite 前端，仅用于本机。保留 M0 下载、M1 多账号发布及 M2 智能混剪，新增 M3 爆款克隆：参考解读、Brief / Treatment / Script、预算确认、生成素材、词级字幕、竖屏成片及批量变体。PLAN.md 保持原样，Tauri 尚未实现。M3 当前实现与验证边界见本文末尾。
 
@@ -31,7 +31,7 @@ npm.cmd run dev
 
 必须保留 `--host 127.0.0.1`，不要开放到局域网。Vite 将 `/api` 代理到 8000 端口。前端生产 build 用于后续桌面封装；M0 用 Vite 开发服务器运行，非静态文件双击打开。
 
-数据默认在 `%LOCALAPPDATA%\TikTolTool`，设置 `TIKTOL_DATA_DIR` 可覆盖。SQLite 保存配置、素材元数据和任务；媒体下载到该目录的 `media`，原下载临时文件处理后清理。注册本地素材仅记录路径，不复制或修改原文件。`FFMPEG_PATH` 可指向 ffmpeg.exe 或包含 ffmpeg/ffprobe 的目录。
+数据默认在 `%LOCALAPPDATA%\TikTolTool`（沿用旧目录名以免已有数据成为孤儿；系统凭据服务名同理），设置 `TIKTOL_DATA_DIR` 可覆盖。SQLite 保存配置、素材元数据和任务；媒体下载到该目录的 `media`，原下载临时文件处理后清理。注册本地素材仅记录路径，不复制或修改原文件。`FFMPEG_PATH` 可指向 ffmpeg.exe 或包含 ffmpeg/ffprobe 的目录。
 
 Key 只进入 keyring（Windows Credential Manager），无明文回退；界面/API 仅显示是否设置，Key 字段保存后清空。Provider Base URL 不可嵌入认证信息；不要把 Key 填入名称、模型或 URL 等普通字段。凭据服务失败返回固定错误。测试使用内存凭据，不接触真实系统凭据。删除 Provider 同时删除对应凭据。
 
@@ -328,11 +328,11 @@ npm.cmd run build
 
 ## M4 打包与桌面外壳
 
-- `scripts\build.cmd`：构建前端并用 PyInstaller 打成 `backend\dist\tiktol-server\tiktol-server.exe`（onedir，内置前端）。双击运行会自动选端口（默认 8000，被占用则换空闲端口）并打开系统浏览器；`--no-browser` 不开浏览器，`--port N` 指定端口。数据仍在 `%LOCALAPPDATA%\TikTolTool`。
+- `scripts\build.cmd`：构建前端并用 PyInstaller 打成 `backend\dist\mavobox-server\mavobox-server.exe`（onedir，内置前端）。双击运行会自动选端口（默认 8000，被占用则换空闲端口）并打开系统浏览器；`--no-browser` 不开浏览器，`--port N` 指定端口。数据仍在 `%LOCALAPPDATA%\TikTolTool`。
 - 已实测：exe 能启动、`/api/health`、前端页面与 SPA 回退、`/api/*` 404、跨源请求被拒（403）、系统凭据（keyring）读写均正常。
 - 首次使用发布功能前需安装 Playwright 浏览器：`playwright install chromium`（打包版不内置浏览器，约 150MB+）。ffmpeg 需在 PATH 或设置 `FFMPEG_PATH`。
 - `src-tauri/`：Tauri 2 外壳。启动打包好的后端 → 等 `TIKTOL_READY`（60 秒超时）→ 打开窗口 → 退出时结束后端；Windows 下后端放进 kill-on-close 作业对象，外壳被强杀时后端及其 Chromium 子进程也会一起结束。已实测：外壳启动后端并通过健康检查，杀掉外壳后后端随之退出。
-- 生成安装包：先 `scripts\build.cmd`，再在**普通用户终端**运行 `powershell -ExecutionPolicy Bypass -File scripts\tauri-build.ps1`，产物在 `src-tauri\target\release\bundle\nsis\TikTol_0.1.0_x64-setup.exe`（约 96MB）。需要 Rust、VS Build Tools(C++)、Node。注意：从 Claude 桌面应用内的沙箱进程运行会因 AppData 路径虚拟化报 `os error 17`，请在普通终端运行。
+- 生成安装包：先 `scripts\build.cmd`，再在**普通用户终端**运行 `powershell -ExecutionPolicy Bypass -File scripts\tauri-build.ps1`，产物在 `src-tauri\target\release\bundle\nsis\MAVO BOX_0.1.0_x64-setup.exe`（约 96MB）。需要 Rust、VS Build Tools(C++)、Node。注意：从 Claude 桌面应用内的沙箱进程运行会因 AppData 路径虚拟化报 `os error 17`，请在普通终端运行。
 - 发布者与版权在 `src-tauri/tauri.conf.json` 的 `bundle.publisher / copyright`。安装包**未做代码签名**，Windows SmartScreen 会提示"未知发布者"；要显示公司名需购买代码签名证书。
 - 同一数据目录只允许一个后端实例（`core/instance.py`）；再次启动会直接指向已运行的实例。
 - 开发模式（Vite 5173）需设置环境变量 `TIKTOL_DEV=1`，否则后端会拒绝其来源（`scripts\dev.cmd` 已设置）。

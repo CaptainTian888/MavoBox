@@ -35,3 +35,12 @@ def test_download_pipeline_mocked_ytdlp(client, video):
     assets = client.get('/api/assets').json()
     assert len(assets) == 1
     assert .8 <= assets[0]['duration'] <= 1.2
+
+
+def test_download_rejects_collection_urls():
+    import pytest
+    from api.app import DownloadInput
+    for url in ['https://www.tiktok.com/@demo', 'https://www.tiktok.com/tag/demo', 'https://www.tiktok.com/playlist/123']:
+        with pytest.raises(ValueError): DownloadInput(url=url)
+    for url in ['https://www.tiktok.com/@demo/video/123', 'https://vm.tiktok.com/abc/', 'https://vt.tiktok.com/abc/', 'https://www.tiktok.com/t/abc/']:
+        assert DownloadInput(url=url).url == url

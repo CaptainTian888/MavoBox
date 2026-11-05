@@ -93,8 +93,13 @@ class JobInput(Input):
         return self
 
 
+class ConfirmInput(Input):
+    confirm_not_posted: bool = False
+
+
 class RescheduleInput(Input):
     scheduled_at: datetime
+    confirm_not_posted: bool = False
 
     @field_validator('scheduled_at')
     @classmethod
@@ -285,12 +290,12 @@ def router(app):
         return action(identifier, 'cancel')
 
     @routes.post('/publish-jobs/{identifier}/retry')
-    def retry(identifier: str):
-        return action(identifier, 'retry')
+    def retry(identifier: str, data: ConfirmInput | None = None):
+        return action(identifier, 'retry', confirm_not_posted=bool(data and data.confirm_not_posted))
 
     @routes.post('/publish-jobs/{identifier}/reschedule')
     def reschedule(identifier: str, data: RescheduleInput):
-        return action(identifier, 'reschedule', scheduled_at=data.scheduled_at)
+        return action(identifier, 'reschedule', scheduled_at=data.scheduled_at, confirm_not_posted=data.confirm_not_posted)
 
     @routes.post('/publish-jobs/{identifier}/complete')
     def complete(identifier: str, data: CompleteInput):

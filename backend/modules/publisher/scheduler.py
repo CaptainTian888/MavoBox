@@ -144,7 +144,7 @@ class Scheduler:
                 finally:
                     self.active.pop(identifier, None)
 
-    def account_operation(self, account_id, operation):
+    def account_operation(self, account_id, operation, cancelled=None):
         token = 'account:' + account_id
         with self.lock:
             account = self.service.account(account_id)
@@ -153,7 +153,8 @@ class Scheduler:
             self.active[token] = (account_id, account['proxy_id'])
         try:
             try:
-                logged_in = getattr(self.driver, operation)(account)
+                logged_in = (self.driver.open_login(account, cancelled=cancelled) if operation == 'open_login' and cancelled is not None
+                             else getattr(self.driver, operation)(account))
                 state, error = ('logged_in', None) if logged_in else ('login_required', MESSAGES['login'])
             except LoginRequired:
                 state, error = 'login_required', MESSAGES['login']

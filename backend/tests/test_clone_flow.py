@@ -189,7 +189,7 @@ def test_batch_estimate_and_admission_are_offline(service):
     quote=s.batch(queue,id,'generate',{})
     assert quote['dry_run'] and quote['cost']['over_budget'] and not calls and not queued
     with pytest.raises(ValueError):s.batch(queue,id,'generate',{'dry_run':False})
-    result=s.batch(queue,id,'generate',{'dry_run':False,'confirm_budget':True})
+    result=s.batch(queue,id,'generate',{'dry_run':False,'confirm_budget':True,'confirm_amount':100.})
     assert len(result['tasks'])==2
     assert all(payload['auto_assemble_render'] for kind,payload in queued)
     assert len(s.db.all('SELECT * FROM clone_reservations'))==2
@@ -204,7 +204,7 @@ def test_cancelled_queued_task_releases_budget(service):
     try:
         queue.create('block',{})
         assert entered.wait(2)
-        task=s.enqueue(queue,id,'generate',dict(dry_run=False,confirm_budget=True))
+        task=s.enqueue(queue,id,'generate',dict(dry_run=False,confirm_budget=True,confirm_amount=100.))
         queue.cancel(task['id']);release.set()
         deadline=time.monotonic()+3
         while id in s.active and time.monotonic()<deadline:time.sleep(.01)
@@ -218,7 +218,7 @@ def test_queued_provider_change_prevents_paid_call(service):
     s,id,calls=service
     saved=[]
     queue=SimpleNamespace(create=lambda kind,payload,**kw:saved.append(payload) or {'id':'task'})
-    s.enqueue(queue,id,'generate',dict(dry_run=False,confirm_budget=True))
+    s.enqueue(queue,id,'generate',dict(dry_run=False,confirm_budget=True,confirm_amount=100.))
     provider=s.provider(s.get(id),'video_gen')
     s.db.execute('UPDATE providers SET model=? WHERE id=?',('changed',provider['id']))
     with pytest.raises(ValueError,match='配置已变化'):s.handler('generate')(saved[0],lambda _:None,lambda:False)
@@ -264,7 +264,7 @@ def test_api_full_mocked_flow(client,monkeypatch,tmp_path):
             time.sleep(.01)
         pytest.fail('queue did not finish')
     for op in ('analyze','plan','generate','assemble','render'):
-        body={'dry_run':False,'confirm_budget':True} if op in ('analyze','plan','generate') else None
+        body={'dry_run':False,'confirm_budget':True,'confirm_amount':100.} if op in ('analyze','plan','generate') else None
         response=client.post(base+'/'+op,json=body)
         assert response.status_code==202,response.text
         wait(response.json())
@@ -328,3 +328,86 @@ def test_rejected_post_is_plain_failure_and_may_retry(service):
     s.factories['video_gen']=Rejects
     with pytest.raises(Fatal): s.generator.run(s.get(id),lambda _:None,lambda:False,only_shot='s1')
     assert s.media(id)[-1]['status']=='failed'
+
+@pytest.mark.parametrize('error', ['Fatal', 'Transient'])
+def test_asr_failure_preserves_paid_speech(service, monkeypatch, error):
+    from modules.clone.adapters import base
+    s, identifier, calls = service
+    original = s.adapter
+    class BrokenASR:
+        def transcribe(self, *args): raise getattr(base, error)('failed')
+    monkeypatch.setattr(s, 'adapter', lambda p, kind, *args, **kwargs: BrokenASR() if kind == 'asr' else original(p, kind, *args, **kwargs))
+    p = s.get(identifier)
+    op = next(op for op in s.generator.operations(p) if op['kind'] == 'speech')
+    s.generator.materialize(p, op, lambda: False)
+    row = s.media(identifier)[-1]
+    assert row['status'] == 'succeeded'
+    assert row['metadata']['estimated'] is True
+
+
+def test_unknown_cache_blocks_other_project(service):
+    s, identifier, calls = service
+    p = s.get(identifier)
+    op = s.generator.operations(p)[0]
+    other = s.variants(identifier, 1, {'cta': ['立即购买']})[0]['id']
+    s.db.execute("INSERT INTO generated_media (id,project_id,shot_id,kind,provider,prompt,status,attempt,cache_key,created_at) VALUES (?,?,?,?,?,?,'unknown',1,?,?)",
+                 ('unknown-other', other, op['shot_id'], op['kind'], op['provider']['id'], '{}', op['cache_key'], '2026-01-01'))
+    with pytest.raises(ValueError, match='未知'):
+        s.generator.materialize(p, op, lambda: False)
+    assert not calls
+
+
+def test_stale_confirmation_amount_is_rejected(service):
+    from fastapi import HTTPException
+    from core.queue import TaskQueue
+    s,id,_=service
+    queue=TaskQueue(s.db,{},1,0)
+    try:
+        quote=s.generator.estimate(s.get(id))['quote_usd']
+        assert quote>0
+        with pytest.raises(HTTPException) as exc:
+            s.enqueue(queue,id,'generate',dict(dry_run=False,confirm_budget=True,confirm_amount=quote/2))
+        assert exc.value.status_code==409
+        with pytest.raises(HTTPException): # missing amount is also refused
+            s.enqueue(queue,id,'generate',dict(dry_run=False,confirm_budget=True))
+    finally:
+        queue.close()
+
+
+def test_missing_reference_fails_before_any_charge(service):
+    s,id,calls=service
+    p=s.get(id)
+    picture=s.asset(p['brief']['reference_assets'][0])
+    Path(picture['path']).unlink()
+    with pytest.raises(ValueError,match='不存在|不可读'):
+        s.generator.run(p,lambda _:None,lambda:False,only_shot='s1')
+    assert not calls
+    assert s.media(id)==[]  # rejected before any media row existed, so nothing was charged
+    assert s.get(id)['spent_usd']==0
+
+
+def test_precheck_rejects_bad_local_inputs(tmp_path):
+    from modules.clone.generation import Generator
+    good=tmp_path/'a.png';good.write_bytes(b'x')
+    Generator.precheck('p',5,[str(good)])
+    for args in (('',5,[str(good)]),('p',0,[str(good)]),('p',5,[str(tmp_path/'missing.png')])):
+        with pytest.raises(ValueError): Generator.precheck(*args)
+
+
+def test_batch_enqueue_is_all_or_nothing(service):
+    s,id,calls=service
+    children=s.variants(id,2,{'style':['a','b']})
+    for c in children:s.update(c['id'],treatment=s.get(id)['treatment'],script=s.get(id)['script'])
+    created=[];cancelled=[]
+    queue=SimpleNamespace(create=lambda kind,payload,**kw:created.append(kind) or {'id':str(len(created))},
+                          cancel=lambda task_id:cancelled.append(task_id))
+    original=s.enqueue
+    state={'n':0}
+    def flaky(*a,**kw):
+        state['n']+=1
+        if state['n']==2: raise ValueError('boom')
+        return original(*a,**kw)
+    s.enqueue=flaky
+    with pytest.raises(ValueError,match='boom'):
+        s.batch(queue,id,'generate',{'dry_run':False,'confirm_budget':True,'confirm_amount':100.})
+    assert cancelled==['1']

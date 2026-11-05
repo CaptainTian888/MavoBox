@@ -97,13 +97,14 @@ class PlaywrightDriver(PublisherDriver):
                 self.screenshot(page, account['id'])
                 raise NeedsAttention() from None
 
-    def open_login(self, account):
+    def open_login(self, account, cancelled=lambda: False):
         with self.context(account, headed=True) as context:
             page = context.pages[0] if context.pages else context.new_page()
             try:
                 page.goto(S.UPLOAD_URL, wait_until='domcontentloaded', timeout=self.settings.browser_timeout_ms)
                 deadline = time.monotonic() + self.settings.login_timeout_seconds
                 while time.monotonic() < deadline:
+                    if cancelled(): return False
                     if page.is_closed():
                         return False
                     scope = S.root(page)
@@ -117,7 +118,9 @@ class PlaywrightDriver(PublisherDriver):
                         if (not S.visible(scope, S.LOGIN) and not S.visible(page, S.CHALLENGE)
                                 and not S.visible(scope, S.CHALLENGE)):
                             return True
-                    page.wait_for_timeout(1000)
+                    for _ in range(10):  # 1s between checks, but react to cancel within 100ms
+                        if cancelled(): return False
+                        page.wait_for_timeout(100)
                 self.screenshot(page, account['id'])
                 return False
             except Exception:

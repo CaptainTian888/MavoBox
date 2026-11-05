@@ -42,6 +42,10 @@ class DownloadInput(Input):
         if (url.scheme != 'https' or url.username or url.password or url.port not in (None, 443)
                 or not (host == 'tiktok.com' or host.endswith('.tiktok.com'))):
             raise ValueError('需要 HTTPS TikTok 链接')
+        import re
+        short = host in ('vm.tiktok.com', 'vt.tiktok.com') or (host == 'www.tiktok.com' and url.path.startswith('/t/'))
+        if '\\' in value or not (short or re.search(r'/video/[0-9]+/?$', url.path)):
+            raise ValueError('需要 TikTok 单个视频链接（不支持用户主页、合集或标签页）')
         return value
 
 
@@ -126,7 +130,7 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
 
         def login_handler(payload, progress, cancelled):
             if not cancelled():
-                app.state.scheduler.account_operation(payload['account_id'], 'open_login')
+                app.state.scheduler.account_operation(payload['account_id'], 'open_login', cancelled=cancelled)
 
         def task_finished(task):
             app.state.remix.task_finished(task)
@@ -144,7 +148,7 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
             app.state.queue.close()
             app.state.scheduler.close()
 
-    app = FastAPI(title='TikTol M3', lifespan=lifespan)
+    app = FastAPI(title='MAVO BOX', lifespan=lifespan)
     app.include_router(publisher_router(app))
     app.include_router(remix_router(app))
     app.include_router(clone_router(app))

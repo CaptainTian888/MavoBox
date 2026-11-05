@@ -325,3 +325,41 @@ def test_sleep_gap_marks_stale_jobs_missed_but_not_held_ones(setup):
         clock[0] += timedelta(seconds=15)
         scheduler.tick(); wait(scheduler)
         assert service.job(fresh['id'])['status'] == 'succeeded'
+
+
+def test_needs_attention_retry_requires_not_posted_confirmation(setup):
+    service, clock, _, _ = setup
+    job = create(setup)
+    with Scheduler(service, FakeDriver(errors=[NeedsAttention()]), now=lambda: clock[0]) as scheduler:
+        scheduler.tick(); wait(scheduler)
+    assert service.job(job['id'])['status'] == 'needs_attention'
+    for name in ('retry', 'reschedule'):
+        with pytest.raises(ValueError, match='可能已经发布'):
+            service.action(job['id'], name)
+    assert service.job(job['id'])['status'] == 'needs_attention'
+    assert service.action(job['id'], 'retry', confirm_not_posted=True)['status'] == 'scheduled'
+
+
+def test_failed_job_retry_needs_no_confirmation(setup):
+    service, clock, _, _ = setup
+    job = create(setup)
+    with Scheduler(service, FakeDriver(errors=[Transient(), Transient()]), now=lambda: clock[0]) as scheduler:
+        for _ in range(4):
+            scheduler.tick(); wait(scheduler); clock[0] += timedelta(hours=1)
+    if service.job(job['id'])['status'] == 'failed':
+        assert service.action(job['id'], 'retry')['status'] == 'scheduled'
+
+
+def test_login_cancel_callback_reaches_driver(setup):
+    service, clock, account, _ = setup
+    seen = []
+
+    class Recording(FakeDriver):
+        def open_login(self, account, cancelled=lambda: False):
+            seen.append(cancelled())
+            return False
+
+    with Scheduler(service, Recording(), now=lambda: clock[0]) as scheduler:
+        scheduler.account_operation(account['id'], 'open_login', cancelled=lambda: True)
+    assert seen == [True]
+    assert not scheduler.busy(account['id'])

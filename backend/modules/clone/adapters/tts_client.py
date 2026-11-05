@@ -8,5 +8,8 @@ class TTSClient(Client):
             **self.extra.get('defaults', {}), 'model':self.provider['model'], 'input':text,
             'voice':voice, 'response_format':'wav'})
         self.check()
+        if len(response.content) > self.max_download_bytes():
+            from .base import Fatal
+            raise Fatal('语音结果超过大小上限')
         Path(dest).write_bytes(response.content)
         return Path(dest)

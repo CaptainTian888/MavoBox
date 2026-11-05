@@ -60,7 +60,7 @@ function App() {
     setForm(empty); setExtra('{}'); setEditing(null); setNotice('配置已保存');
   }
   return <main>
-    <header><h1>TikTol <small>本地视频工具 · M3</small></h1><p>下载片段、爆款克隆、智能混剪与多账号定时发布</p></header>
+    <header><h1><img src="/favicon.svg" alt="" width="36" height="36" style={{verticalAlign: 'middle', marginRight: '.5rem'}}/>MAVO BOX <small>本地视频工具</small></h1><p>下载片段、爆款克隆、智能混剪与多账号定时发布</p></header>
     <nav>{['下载', '素材库', '混剪', '爆款克隆', '账号', '发布', '设置'].map(p => <button key={p} aria-current={page === p ? 'page' : undefined} onClick={() => {setPage(p); setKey('');}}>{p}</button>)}</nav>
     {error && <p role="alert" className="error">{error}</p>}{notice && <p role="status">{notice}</p>}
     {(page === '账号' || page === '发布') && <Publisher page={page}/>}

@@ -34,6 +34,7 @@ class ProjectInput(Input):
 class GenerateInput(Input):
     dry_run: bool=True
     confirm_budget: bool=False
+    confirm_amount: float | None=Field(default=None,ge=0,allow_inf_nan=False)
     force: bool=False
     auto_assemble_render: bool=False
 

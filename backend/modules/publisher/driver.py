@@ -20,7 +20,7 @@ class PublisherDriver(ABC):
     def check_login(self, account): ...
 
     @abstractmethod
-    def open_login(self, account): ...
+    def open_login(self, account, cancelled=lambda: False): ...
 
     @abstractmethod
     def publish(self, account, job): ...
@@ -37,7 +37,7 @@ class FakeDriver(PublisherDriver):
     def check_login(self, account):
         return self.logged_in
 
-    def open_login(self, account):
+    def open_login(self, account, cancelled=lambda: False):
         return self.logged_in
 
     def publish(self, account, job):

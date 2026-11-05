@@ -30,7 +30,7 @@ class Downloader:
         try:
             with TemporaryDirectory(dir=self.directory) as directory:
                 options = dict(outtmpl=str(Path(directory) / 'source.%(ext)s'),
-                    format='best[ext=mp4]/best', noplaylist=True, quiet=True, no_warnings=True,
+                    format='best[ext=mp4]/best', noplaylist=True, playlist_items='1', max_downloads=1, quiet=True, no_warnings=True,
                     logger=SilentLogger(), progress_hooks=[hook], socket_timeout=20,
                     retries=0, ffmpeg_location=locate('ffmpeg'))
                 with yt_dlp.YoutubeDL(options) as ydl:

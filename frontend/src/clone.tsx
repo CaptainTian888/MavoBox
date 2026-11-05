@@ -12,7 +12,7 @@ type Shot={id:string;kind:string;duration:number;prompt:string;audio_ref:string;
 type Project={id:string;name:string;status:string;source_asset_id:string|null;source_url:string|null;mode:string;hook_seconds:number;
   brief:Brief;analysis:Analysis|null;treatment:{shots:Shot[]}|null;script:unknown;timeline:unknown;parent_id:string|null;output_asset_id:string|null};
 type Media={id:string;shot_id:string;kind:string;status:string;attempt:number;metadata:{estimated?:boolean;fallback?:boolean;error?:string;progress?:number}};
-type Cost={known_total_usd:number;total_usd:number|null;unknown:boolean;over_budget:boolean;spent_usd:number;reserved_usd:number;note:string;
+type Cost={quote_usd:number;known_total_usd:number;total_usd:number|null;unknown:boolean;over_budget:boolean;spent_usd:number;reserved_usd:number;note:string;
   items:{kind:string;shot_id:string;cached:boolean;cost_estimate:number|null}[]};
 type Task={id:string;kind:string;status:string;progress:number};
 const initial:Brief={product_name:'',selling_points:[],evidence:[],forbidden_words:[],reference_assets:[],requirements:'',language:'zh',
@@ -118,7 +118,7 @@ export function Clone(){
             {cost.over_budget&&<p className="error">将超过预算上限。确认意味着允许此次超支。</p>}<p>{cost.note}</p>
             <ul>{cost.items.map((x,i)=><li key={i}>{x.kind} / {x.shot_id}：{x.cached?'命中缓存':x.cost_estimate===null?'单价未知':'$'+x.cost_estimate.toFixed(4)}</li>)}</ul>
             <label><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>我确认当前估算；如含未知价格或超预算，我同意继续调用生成 API</label>
-            <button disabled={busy||(!confirmed&&(cost.unknown||cost.known_total_usd>0))} onClick={()=>void run(()=>action('generate',{dry_run:false,confirm_budget:confirmed,force:forceAll}))}>确认预算并生成</button></>}
+            <button disabled={busy||(!confirmed&&(cost.unknown||cost.known_total_usd>0))} onClick={()=>void run(()=>action('generate',{dry_run:false,confirm_budget:confirmed,confirm_amount:cost.quote_usd,force:forceAll}))}>确认预算并生成</button></>}
         </>}
       </article>
       <article><h3>⑤ 生成进度</h3>
@@ -129,7 +129,7 @@ export function Clone(){
           {m?.metadata.error&&<p className="error">{m.metadata.error}</p>}{m?.metadata.progress!==undefined&&<progress value={m.metadata.progress} max={100}/>}
           {m?.status==='succeeded'&&<video controls preload="metadata" src={`/api/clone/media/${m.id}`}/>}
           <button disabled={busy} onClick={()=>void run(async()=>{const c=await api<Cost>(endpoint(`cost?shot_id=${encodeURIComponent(shot.id)}&force=true`));setRegenCosts({...regenCosts,[shot.id]:c});})}>重生成费用</button>
-          {regenCosts[shot.id]&&<button disabled={busy} onClick={()=>void run(async()=>{await action(`shots/${shot.id}/regenerate`,{dry_run:false,force:true,confirm_budget:true});setRegenCosts({});})}>确认重生成：{regenCosts[shot.id].unknown?'价格未知':`$${regenCosts[shot.id].known_total_usd.toFixed(4)}`}{regenCosts[shot.id].over_budget?'（超预算）':''}</button>}
+          {regenCosts[shot.id]&&<button disabled={busy} onClick={()=>void run(async()=>{await action(`shots/${shot.id}/regenerate`,{dry_run:false,force:true,confirm_budget:true,confirm_amount:regenCosts[shot.id].quote_usd});setRegenCosts({});})}>确认重生成：{regenCosts[shot.id].unknown?'价格未知':`$${regenCosts[shot.id].known_total_usd.toFixed(4)}`}{regenCosts[shot.id].over_budget?'（超预算）':''}</button>}
           <button disabled={busy} onClick={()=>void run(()=>action(`shots/${shot.id}/regenerate`,{dry_run:false,fallback:true,force:true}))}>用用户参考图静态兜底</button>
           <label>替换素材<select value={replacement[shot.id]||''} onChange={e=>setReplacement({...replacement,[shot.id]:e.target.value})}><option value="">选择用户图片 / 视频</option>{assets.filter(a=>['image','video'].includes(a.type)&&a.id!==p.source_asset_id).map(a=><option key={a.id} value={a.id}>{a.path}</option>)}</select></label>
           <button disabled={busy||!replacement[shot.id]} onClick={()=>void run(()=>action(`shots/${shot.id}/regenerate`,{dry_run:false,replacement_asset_id:replacement[shot.id]}))}>替换镜头</button>

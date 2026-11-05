@@ -5,7 +5,7 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 $env:PATH = "$env:USERPROFILE\.cargo\bin;C:\Users\Captain\AppData\Local\hermes\node;$env:PATH"
 cargo --version
-$exe = Join-Path $root 'backend\dist\tiktol-server\tiktol-server.exe'
+$exe = Join-Path $root 'backend\dist\mavobox-server\mavobox-server.exe'
 if (-not (Test-Path $exe)) { throw "Missing $exe - run scripts\build.cmd first" }
 npx --yes "@tauri-apps/cli@2" build
 Get-ChildItem -Recurse -Filter *.exe (Join-Path $root 'src-tauri\target\release\bundle') | Select-Object FullName, Length

@@ -1,4 +1,4 @@
-// Tauri shell: starts the packaged Python backend (tiktol-server) as a child process,
+// Tauri shell: starts the packaged Python backend (mavobox-server) as a child process,
 // waits (with a timeout) for its "TIKTOL_READY <url>" line, then opens a window on that URL.
 // On Windows the child is placed in a kill-on-close Job Object, so the backend and anything
 // it spawns (Playwright / Chromium) die with the shell even if the shell itself is killed.
@@ -16,16 +16,16 @@ use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 struct Backend(Mutex<Option<Child>>);
 
 fn server_exe(app: &tauri::AppHandle) -> PathBuf {
-    // Installed: <resources>/tiktol-server/tiktol-server.exe
+    // Installed: <resources>/mavobox-server/mavobox-server.exe
     if let Ok(dir) = app.path().resource_dir() {
-        let p = dir.join("tiktol-server").join("tiktol-server.exe");
+        let p = dir.join("mavobox-server").join("mavobox-server.exe");
         if p.exists() {
             return p;
         }
     }
     // Dev: built by scripts/build.cmd
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../backend/dist/tiktol-server/tiktol-server.exe")
+        .join("../backend/dist/mavobox-server/mavobox-server.exe")
 }
 
 #[cfg(windows)]
@@ -96,7 +96,7 @@ fn main() {
                 .parse()
                 .map_err(|_| format!("后端返回了无效地址: {url}"))?;
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(parsed))
-                .title("TikTol")
+                .title("MAVO BOX")
                 .inner_size(1280.0, 860.0)
                 .build()?;
             Ok(())
