@@ -79,7 +79,7 @@ scripts/           build.cmd / build.sh（打包后端）· tauri-build.ps1（�
 assets/brand/      LOGO 与图标源文件
 docs/              学员手册 · 教师手册 · 功能与接口参考手册
 .github/workflows/ release.yml（Windows + macOS 构建，尚未实跑）
-private/           ⚠ 授权与更新签名私钥（已被 .gitignore 排除，不会提交，务必另外备份）
+MavoBox-File/      ⚠ 全部密钥与备份清单（授权签名私钥、更新签名私钥及密码；已被 .gitignore 排除，不会提交，务必另外备份）
 ```
 
 ## 开发
@@ -153,7 +153,7 @@ macOS 用 `scripts/build.sh` + `npx @tauri-apps/cli@2 build --bundles dmg,app`�
 - **AI 接口未实测**：fal.ai / Replicate / OpenAI 兼容接口的字段细节、真实视频生成质量与人物一致性都只在 mock 下测试，需配置真实 Key 后验证。
 - **macOS 未验证**：已做数据目录、字体、单实例锁等适配并写了构建脚本和 CI，但从未在 Mac 上跑过。无苹果开发者证书时用户会遇到"无法验证开发者"提示。
 - **未做代码签名**：Windows 会提示"未知发布者"，部分杀毒软件可能误报；购买代码签名证书后可显著改善。
-- **更新地址是占位的**：`src-tauri/tauri.conf.json` 里的 `plugins.updater.endpoints` 需要换成你实际托管 `latest.json` 的公开地址；在此之前更新检查静默失败，不影响使用。
+- **更新依赖公开的 GitHub Release**：应用启动时读取 `https://github.com/CaptainTian888/MavoBox/releases/latest/download/latest.json`，所以仓库必须保持公开，且每次发版都要把新的 `latest.json` 与安装包一起上传到 Release（流程见教师手册）。
 - **一键安装浏览器较慢**：下载并解压后占用数百 MB（Chromium + headless shell），网络差时需在向导里填下载镜像。
 - **复刻他人内容有版权风险**：默认不把参考视频的画面与音乐放进成片，只学习结构；自动化发布有被平台限流或封号的风险。
 

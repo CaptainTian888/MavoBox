@@ -98,9 +98,18 @@ fn check_for_update(app: tauri::AppHandle) {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
     use tauri_plugin_updater::UpdaterExt;
     std::thread::spawn(move || {
-        let Ok(updater) = app.updater() else { return };
+        // MAVOBOX_UPDATE_URL: use another update feed (for testing the update flow). Updates must still
+        // carry a valid signature for the public key embedded in tauri.conf.json, so this cannot be
+        // used to install unsigned code; plain http is refused unless the build explicitly allows it.
+        let built = match std::env::var("MAVOBOX_UPDATE_URL").ok().and_then(|u| u.parse::<tauri::Url>().ok()) {
+            Some(url) => app.updater_builder().endpoints(vec![url]).and_then(|b| b.build()),
+            None => app.updater(),
+        };
+        let Ok(updater) = built else { return };
         let Ok(Some(update)) = tauri::async_runtime::block_on(updater.check()) else { return };
-        let wants = app
+        // MAVOBOX_UPDATE_SILENT=1 installs without asking (used by automated update tests).
+        let silent = std::env::var("MAVOBOX_UPDATE_SILENT").map(|v| v == "1").unwrap_or(false);
+        let wants = silent || app
             .dialog()
             .message(format!(
                 "发现新版本 {}。

@@ -2,7 +2,7 @@
 # NOT yet run end-to-end: the first run will likely need small fixes (runner names, ffmpeg URLs).
 #
 # Required repository secrets:
-#   TAURI_SIGNING_PRIVATE_KEY           contents of private/mavobox_updater.key  (updater signature)
+#   TAURI_SIGNING_PRIVATE_KEY           contents of MavoBox-File/mavobox_updater.key  (updater signature)
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  (empty if the key has no password)
 # Required repository variables (static GPL ffmpeg+ffprobe zips whose root contains the two binaries):
 #   FFMPEG_WIN_URL, FFMPEG_MAC_URL
@@ -10,9 +10,7 @@
 #   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID
 name: release
 on:
-  push:
-    tags: ['v*']
-  workflow_dispatch:
+  workflow_dispatch:   # manual only; add `push: tags: ['v*']` once the secrets/variables above are configured
 
 jobs:
   build:

@@ -1,7 +1,7 @@
 """Teacher-side license tool. Run from backend/:  uv run python tools/license_tool.py <command>
 
-  init   --out ..\\private\\mavobox_license_private.pem   create the signing key (once!) and print the public key
-  issue  --key ..\\private\\mavobox_license_private.pem --name "张三" [--machine XXXXX-XXXXX-XXXXX-XXXXX] [--days 365 | --exp 2027-12-31]
+  init   --out ..\\MavoBox-File\\mavobox_license_private.pem   create the signing key (once!) and print the public key
+  issue  --key ..\\MavoBox-File\\mavobox_license_private.pem --name "张三" [--machine XXXXX-XXXXX-XXXXX-XXXXX] [--days 365 | --exp 2027-12-31]
   pub    --key <私钥>                                          打印公钥
   check  --code MAVO1....                                   verify a code against the embedded public key
 

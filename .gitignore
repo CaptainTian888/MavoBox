@@ -11,7 +11,11 @@ backend/dist/
 backend/*.spec
 src-tauri/target/
 src-tauri/gen/
+MavoBox-File/
 private/
 vendor/
 *.zip
 ffmpeg-*/
+src-tauri/test-*.json
+release/
+release-test/
