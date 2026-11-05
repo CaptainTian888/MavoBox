@@ -4,11 +4,31 @@ Two backends on one SQLite database / Chromium profile would mark each other's r
 jobs as failed and corrupt state. The holder keeps an exclusive lock on byte 0 of
 `instance.lock` for its whole lifetime (the OS releases it even if the process is killed)
 and publishes its URL after offset 16 so a second launch can point at the running one.
+Windows uses msvcrt byte-range locks, POSIX (macOS/Linux) uses flock.
 """
-import msvcrt
+import sys
 from pathlib import Path
 
 OFFSET = 16
+
+if sys.platform == 'win32':
+    import msvcrt
+
+    def _lock(handle):
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+
+    def _unlock(handle):
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+else:
+    import fcntl
+
+    def _lock(handle):
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def _unlock(handle):
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 class InstanceLock:
@@ -20,8 +40,7 @@ class InstanceLock:
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         handle = open(self.path, 'a+b')
         try:
-            handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            _lock(handle)
         except OSError:
             handle.close()
             return False
@@ -38,7 +57,7 @@ class InstanceLock:
         """URL published by the current holder, or None."""
         try:
             with open(self.path, 'rb') as handle:
-                handle.seek(OFFSET)  # byte 0 is locked by the holder; read past it
+                handle.seek(OFFSET)  # byte 0 is locked by the holder on Windows; read past it
                 data = handle.read(256)
         except OSError:
             return None
@@ -48,8 +67,7 @@ class InstanceLock:
     def release(self):
         if self.file:
             try:
-                self.file.seek(0)
-                msvcrt.locking(self.file.fileno(), msvcrt.LK_UNLCK, 1)
+                _unlock(self.file)
             finally:
                 self.file.close()
                 self.file = None

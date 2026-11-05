@@ -9,6 +9,9 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from api.static import mount_frontend
+from core import env as envmod
+from core.license import LicenseError, LicenseStore
+from core.license_key import PUBLIC_KEY
 from core.config import Settings
 from core.db import Database
 from core.ffmpeg import probe
@@ -28,6 +31,14 @@ from modules.clone.service import CloneService, OPERATIONS
 
 class Input(BaseModel):
     model_config = ConfigDict(extra='forbid')
+
+
+class InstallBrowserInput(Input):
+    mirror: str | None = Field(default=None, max_length=300)
+
+
+class LicenseInput(Input):
+    code: str = Field(min_length=10, max_length=4096)
 
 
 class DownloadInput(Input):
@@ -112,7 +123,7 @@ class SecretInput(Input):
     key: SecretStr
 
 
-def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now=None, remix_client_factory=None, clone_factories=None):
+def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now=None, remix_client_factory=None, clone_factories=None, license_public_key=None):
     settings = settings or Settings()
     secrets = secrets or KeyringSecrets()
 
@@ -164,6 +175,54 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
         if origin and origin not in allowed:
             return JSONResponse(status_code=403, content={'detail': '不允许的来源'})
         return await call_next(request)
+
+    license_store = LicenseStore(settings.data_dir, license_public_key or PUBLIC_KEY)
+    app.state.license = license_store
+    license_cache = {'at': 0.0, 'ok': False}
+
+    def is_licensed():
+        import time
+        now = time.monotonic()
+        if now - license_cache['at'] > 5:  # re-read at most every 5s (also picks up expiry)
+            license_cache.update(at=now, ok=license_store.status()['licensed'])
+        return license_cache['ok']
+
+    open_paths = ('/api/health', '/api/license', '/api/env')
+
+    @app.middleware('http')
+    async def license_gate(request: Request, call_next):
+        path = request.url.path
+        if (settings.license_required and path.startswith('/api/')
+                and not path.startswith(open_paths) and not is_licensed()):
+            return JSONResponse(status_code=402, content={'detail': '需要先激活授权码', 'code': 'license_required'})
+        return await call_next(request)
+
+    installer = envmod.BrowserInstaller()
+
+    @app.get('/api/env')
+    def environment():
+        return envmod.environment(settings.data_dir, installer)
+
+    @app.post('/api/env/install-browser', status_code=202)
+    def install_browser(data: InstallBrowserInput):
+        try:
+            installer.start(data.mirror)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        return installer.snapshot()
+
+    @app.get('/api/license')
+    def license_status():
+        return license_store.status()
+
+    @app.post('/api/license')
+    def license_activate(data: LicenseInput):
+        try:
+            result = license_store.activate(data.code)
+        except LicenseError as exc:
+            raise HTTPException(422, str(exc)) from None
+        license_cache['at'] = 0.0
+        return result
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request, exc):

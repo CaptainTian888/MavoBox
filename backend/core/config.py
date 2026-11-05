@@ -1,13 +1,25 @@
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 
+def default_data_dir():
+    """Windows: %LOCALAPPDATA%/TikTolTool; macOS: ~/Library/Application Support/TikTolTool; else ~/.local/share."""
+    if os.environ.get("TIKTOL_DATA_DIR"):
+        return Path(os.environ["TIKTOL_DATA_DIR"])
+    if os.name == "nt":
+        return Path(os.environ.get("LOCALAPPDATA", Path.home())) / "TikTolTool"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "TikTolTool"
+    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "TikTolTool"
+
+
 @dataclass
 class Settings:
-    data_dir: Path = field(default_factory=lambda: Path(os.environ.get(
-        "TIKTOL_DATA_DIR", str(Path(os.environ.get("LOCALAPPDATA", Path.home())) / "TikTolTool"))))
+    data_dir: Path = field(default_factory=lambda: default_data_dir())
     concurrency: int = 2
+    license_required: bool = False  # the packaged launcher turns this on
     retries: int = 1
     publish_concurrency: int = 2
     publish_poll_seconds: float = 15

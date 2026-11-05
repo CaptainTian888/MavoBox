@@ -15,17 +15,23 @@ use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 struct Backend(Mutex<Option<Child>>);
 
+#[cfg(windows)]
+const SERVER_BIN: &str = "mavobox-server.exe";
+#[cfg(not(windows))]
+const SERVER_BIN: &str = "mavobox-server";
+
 fn server_exe(app: &tauri::AppHandle) -> PathBuf {
-    // Installed: <resources>/mavobox-server/mavobox-server.exe
+    // Installed: <resources>/mavobox-server/<SERVER_BIN>
     if let Ok(dir) = app.path().resource_dir() {
-        let p = dir.join("mavobox-server").join("mavobox-server.exe");
+        let p = dir.join("mavobox-server").join(SERVER_BIN);
         if p.exists() {
             return p;
         }
     }
     // Dev: built by scripts/build.cmd
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../backend/dist/mavobox-server/mavobox-server.exe")
+        .join("../backend/dist/mavobox-server")
+        .join(SERVER_BIN)
 }
 
 #[cfg(windows)]
@@ -85,8 +91,38 @@ fn start_backend(exe: &PathBuf) -> Result<(Child, String), String> {
     }
 }
 
+/// Checks the update feed once at startup (silently ignores network/feed errors) and, if the
+/// user agrees, downloads + installs the signed update and restarts. Runs on its own thread so
+/// the window is never blocked.
+fn check_for_update(app: tauri::AppHandle) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+    use tauri_plugin_updater::UpdaterExt;
+    std::thread::spawn(move || {
+        let Ok(updater) = app.updater() else { return };
+        let Ok(Some(update)) = tauri::async_runtime::block_on(updater.check()) else { return };
+        let wants = app
+            .dialog()
+            .message(format!(
+                "发现新版本 {}。
+是否现在更新？更新后应用会自动重启，你的数据和配置会保留。",
+                update.version
+            ))
+            .title("MAVO BOX 更新")
+            .buttons(MessageDialogButtons::OkCancelCustom("立即更新".into(), "稍后".into()))
+            .blocking_show();
+        if !wants {
+            return;
+        }
+        if tauri::async_runtime::block_on(update.download_and_install(|_, _| {}, || {})).is_ok() {
+            app.restart();
+        }
+    });
+}
+
 fn main() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .manage(Backend(Mutex::new(None)))
         .setup(|app| {
             let exe = server_exe(app.handle());
@@ -99,6 +135,7 @@ fn main() {
                 .title("MAVO BOX")
                 .inner_size(1280.0, 860.0)
                 .build()?;
+            check_for_update(app.handle().clone());
             Ok(())
         })
         .build(tauri::generate_context!())

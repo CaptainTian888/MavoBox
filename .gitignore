@@ -11,3 +11,7 @@ backend/dist/
 backend/*.spec
 src-tauri/target/
 src-tauri/gen/
+private/
+vendor/
+*.zip
+ffmpeg-*/

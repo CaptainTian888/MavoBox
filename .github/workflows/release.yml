@@ -1,0 +1,69 @@
+# Builds signed-for-update installers for Windows and macOS and attaches them to a GitHub release.
+# NOT yet run end-to-end: the first run will likely need small fixes (runner names, ffmpeg URLs).
+#
+# Required repository secrets:
+#   TAURI_SIGNING_PRIVATE_KEY           contents of private/mavobox_updater.key  (updater signature)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  (empty if the key has no password)
+# Required repository variables (static GPL ffmpeg+ffprobe zips whose root contains the two binaries):
+#   FFMPEG_WIN_URL, FFMPEG_MAC_URL
+# Optional for a trusted macOS build (otherwise Gatekeeper shows "unidentified developer"):
+#   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID
+name: release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundles: nsis
+            ffmpeg_var: FFMPEG_WIN_URL
+          - os: macos-latest      # Apple Silicon
+            bundles: dmg,app
+            ffmpeg_var: FFMPEG_MAC_URL
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: astral-sh/setup-uv@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Fetch ffmpeg
+        shell: bash
+        env:
+          URL: ${{ vars[matrix.ffmpeg_var] }}
+        run: |
+          mkdir -p ffbin && curl -fsSL "$URL" -o ff.zip && unzip -o -j ff.zip '*ffmpeg*' '*ffprobe*' -d ffbin
+          chmod +x ffbin/* || true
+          echo "FFMPEG_BIN_DIR=$PWD/ffbin" >> "$GITHUB_ENV"
+      - name: Package backend (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: scripts\build.cmd
+      - name: Package backend (macOS)
+        if: runner.os == 'macOS'
+        run: scripts/build.sh
+      - name: Build installer
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx --yes @tauri-apps/cli@2 build --bundles ${{ matrix.bundles }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.os }}
+          path: |
+            src-tauri/target/release/bundle/nsis/*
+            src-tauri/target/release/bundle/dmg/*
+            src-tauri/target/release/bundle/macos/*.tar.gz*

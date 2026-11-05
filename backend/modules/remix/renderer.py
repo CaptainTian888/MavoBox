@@ -9,6 +9,16 @@ from core.queue import Cancelled
 from .planner import duration
 
 
+def default_font():
+    """First CJK-capable system font that exists (Windows YaHei, macOS PingFang/STHeiti, Linux Noto)."""
+    for candidate in (r'C:\Windows\Fonts\msyh.ttc', '/System/Library/Fonts/PingFang.ttc',
+                      '/System/Library/Fonts/STHeiti Light.ttc', '/Library/Fonts/Arial Unicode.ttf',
+                      '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc'):
+        if Path(candidate).is_file():
+            return candidate
+    return None
+
+
 def run_ffmpeg(args, total=1, progress=lambda _: None, cancelled=lambda: False, cwd=None):
     if cancelled():
         raise Cancelled()
@@ -86,7 +96,7 @@ def render(timeline, assets, target, progress=lambda _: None, cancelled=lambda: 
                     name = f'caption{i}.txt'
                     (work / name).write_text(cap['text'], encoding='utf-8')
                     style = timeline['global_caption_style']
-                    font = style['font'] or font_path or r'C:\Windows\Fonts\msyh.ttc'
+                    font = style['font'] or font_path or default_font()
                     font_option = ''
                     if font and Path(font).is_file():
                         # Copy to an internally named path; no user path enters drawtext.

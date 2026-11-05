@@ -32,7 +32,10 @@ def main(argv=None):
 
     from core.config import Settings
     from core.instance import InstanceLock
-    lock = InstanceLock(Settings().data_dir)
+    data_dir = Settings().data_dir
+    # Keep Chromium in the user data dir: survives app updates/uninstall and is writable without admin rights.
+    os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH', str(data_dir / 'browsers'))
+    lock = InstanceLock(data_dir)
     if not lock.acquire():
         # Another backend owns this data directory: point at it instead of starting a second one.
         url = lock.running_url()
@@ -50,7 +53,7 @@ def main(argv=None):
     import uvicorn
     from api.app import create_app
 
-    app = create_app()
+    app = create_app(Settings(license_required=getattr(sys, 'frozen', False) or os.environ.get('TIKTOL_REQUIRE_LICENSE') == '1'))
     url = f'http://127.0.0.1:{port}'
     lock.publish(url)
     print(f'TIKTOL_READY {url}', flush=True)

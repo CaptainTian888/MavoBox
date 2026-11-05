@@ -3,18 +3,44 @@
   "productName": "MAVO BOX",
   "version": "0.1.0",
   "identifier": "app.mavobox.desktop",
-  "build": { "frontendDist": "../frontend/dist" },
+  "build": {
+    "frontendDist": "../frontend/dist"
+  },
   "app": {
     "windows": [],
-    "security": { "csp": null }
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
     "publisher": "SHINEVISTA GLOBAL GROUP LIMITED(HK)",
     "copyright": "Copyright © 2026 SHINEVISTA GLOBAL GROUP LIMITED(HK). All rights reserved.",
     "shortDescription": "MAVO BOX local video toolkit",
-    "targets": ["nsis"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
-    "resources": { "../backend/dist/mavobox-server/": "mavobox-server/" }
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../backend/dist/mavobox-server/": "mavobox-server/"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU5QTdCQjU0RjM5RUMwRjQKUldUMHdKN3pWTHVuV2JoUldoalZYR2ZqK2ZMMjI4ampUSVd3MEFsZzMzRm5WRXlnWXBEZndDaDMK",
+      "endpoints": [
+        "https://github.com/CaptainTian888/MavoBox-releases/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

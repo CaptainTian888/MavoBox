@@ -4,6 +4,7 @@ import './style.css';
 import {Publisher} from './publisher';
 import {Remix} from './remix';
 import {Clone} from './clone';
+import {Gate, Setup, needsSetup} from './onboarding';
 
 type Task = {id: string; status: string; progress: number; error: string | null; attempts: number};
 type Asset = {id: string; path: string; type: string; duration: number; width: number | null; height: number | null};
@@ -23,6 +24,7 @@ async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> 
 
 function App() {
   const [page, setPage] = useState('下载');
+  useEffect(() => {void needsSetup().then(n => {if (n) setPage('向导');});}, []);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -61,9 +63,10 @@ function App() {
   }
   return <main>
     <header><h1><img src="/favicon.svg" alt="" width="36" height="36" style={{verticalAlign: 'middle', marginRight: '.5rem'}}/>MAVO BOX <small>本地视频工具</small></h1><p>下载片段、爆款克隆、智能混剪与多账号定时发布</p></header>
-    <nav>{['下载', '素材库', '混剪', '爆款克隆', '账号', '发布', '设置'].map(p => <button key={p} aria-current={page === p ? 'page' : undefined} onClick={() => {setPage(p); setKey('');}}>{p}</button>)}</nav>
+    <nav>{['下载', '素材库', '混剪', '爆款克隆', '账号', '发布', '设置', '向导'].map(p => <button key={p} aria-current={page === p ? 'page' : undefined} onClick={() => {setPage(p); setKey('');}}>{p}</button>)}</nav>
     {error && <p role="alert" className="error">{error}</p>}{notice && <p role="status">{notice}</p>}
     {(page === '账号' || page === '发布') && <Publisher page={page}/>}
+    {page === '向导' && <Setup onDone={() => setPage('下载')}/>}
     {page === '混剪' && <Remix/>}
     {page === '爆款克隆' && <Clone/>}
     {page === '下载' && <section><h2>下载前 N 秒</h2>
@@ -99,4 +102,4 @@ function App() {
   </main>;
 }
 
-createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
+createRoot(document.getElementById('root')!).render(<React.StrictMode><Gate><App/></Gate></React.StrictMode>);

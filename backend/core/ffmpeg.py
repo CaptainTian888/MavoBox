@@ -1,15 +1,28 @@
 import json
 import os
+import sys
 from pathlib import Path
 import shutil
 import subprocess
 
 
+def bundled_dir():
+    """Directory holding ffmpeg/ffprobe shipped inside the packaged app (PyInstaller bundle), if any."""
+    base = getattr(sys, '_MEIPASS', None)
+    if base and (Path(base) / 'bin').is_dir():
+        return Path(base) / 'bin'
+    return None
+
+
 def locate(name):
+    exe = name + ('.exe' if os.name == 'nt' else '')
+    bundled = bundled_dir()
+    if bundled and (bundled / exe).is_file():
+        return str(bundled / exe)
     override = os.environ.get("FFMPEG_PATH")
     if override:
         path = Path(override)
-        candidate = path / (name + ('.exe' if os.name == 'nt' else '')) if path.is_dir() else (
+        candidate = path / exe if path.is_dir() else (
             path if name == 'ffmpeg' else path.with_name('ffprobe' + path.suffix))
         if candidate.is_file():
             return str(candidate)
