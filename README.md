@@ -325,3 +325,11 @@ npm.cmd run build
 ```
 
 宿主 Claude 应独立验收测试结果与 diff，尤其预算并发、恢复幂等性、ASS 字幕视觉效果与请求字段。真实 fal / Replicate / OpenAI 兼容接口的字段、模型版本、队列 URL、上传协议和多图支持未实测；真实视频质量、人物/产品一致性、中文字体与浏览器完整交互未验证。缓存与预算均为本地单服务进程设计，不支持同时运行两个后端实例对同一数据库进行付费生成。人物一致性依赖供应商模型能力，锚图不是效果保证。
+
+## M4 打包与桌面外壳
+
+- `scripts\build.cmd`：构建前端并用 PyInstaller 打成 `backend\dist\tiktol-server\tiktol-server.exe`（onedir，内置前端）。双击运行会自动选端口（默认 8000，被占用则换空闲端口）并打开系统浏览器；`--no-browser` 不开浏览器，`--port N` 指定端口。数据仍在 `%LOCALAPPDATA%\TikTolTool`。
+- 已实测：exe 能启动、`/api/health`、前端页面与 SPA 回退、`/api/*` 404、跨源请求被拒（403）、系统凭据（keyring）读写均正常。
+- 首次使用发布功能前需安装 Playwright 浏览器：`playwright install chromium`（打包版不内置浏览器，约 150MB+）。ffmpeg 需在 PATH 或设置 `FFMPEG_PATH`。
+- `src-tauri/`：Tauri 2 外壳脚手架（启动 sidecar 后端 → 等 `TIKTOL_READY` → 打开窗口 → 退出时结束后端）。**尚未编译验证**：本机未安装 Rust。装好 Rust 与 `cargo install tauri-cli --version "^2"` 后，在项目根运行 `cargo tauri build` 生成 NSIS 安装包。图标目前是占位图。
+- 后端也可单独跑：`TIKTOL_SERVE_UI=0` 关闭静态页托管（开发时仍用 Vite）。

@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
@@ -7,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from api.static import mount_frontend
 from core.config import Settings
 from core.db import Database
 from core.ffmpeg import probe
@@ -151,7 +153,9 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
     @app.middleware('http')
     async def local_origin(request: Request, call_next):
         origin = request.headers.get('origin')
+        port = os.environ.get('TIKTOL_PORT', '8000')
         if origin and origin not in ('http://127.0.0.1:5173', 'http://localhost:5173',
+                                      f'http://127.0.0.1:{port}', f'http://localhost:{port}',
                                       'http://127.0.0.1:8000', 'http://localhost:8000'):
             return JSONResponse(status_code=403, content={'detail': '不允许的来源'})
         return await call_next(request)
@@ -259,4 +263,6 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
         secrets.set(provider_id, value)
         return {'key_status': '已设置'}
 
+    if os.environ.get('TIKTOL_SERVE_UI', '1') != '0':
+        mount_frontend(app)
     return app

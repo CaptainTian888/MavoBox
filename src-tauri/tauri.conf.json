@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "TikTol",
+  "version": "0.1.0",
+  "identifier": "app.tiktol.desktop",
+  "build": { "frontendDist": "../frontend/dist" },
+  "app": {
+    "windows": [],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico"],
+    "resources": { "../backend/dist/tiktol-server/": "tiktol-server/" }
+  }
+}

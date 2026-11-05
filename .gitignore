@@ -6,3 +6,8 @@ frontend/dist/
 *.sqlite3*
 .env
 *.log
+backend/build/
+backend/dist/
+backend/*.spec
+src-tauri/target/
+src-tauri/gen/
