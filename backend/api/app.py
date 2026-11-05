@@ -20,6 +20,8 @@ from modules.publisher.playwright_driver import PlaywrightDriver
 from api.publisher import router as publisher_router
 from api.remix import router as remix_router
 from modules.remix.service import RemixService
+from api.clone import router as clone_router
+from modules.clone.service import CloneService, OPERATIONS
 
 
 class Input(BaseModel):
@@ -46,10 +48,46 @@ class AssetInput(Input):
 
 
 class ProviderInput(Input):
-    type: Literal['llm', 'video_gen']
+    type: Literal['llm', 'video_gen', 'asr', 'image_gen', 'tts']
     name: str = Field(min_length=1, max_length=200)
     base_url: str = Field(max_length=2048)
     model: str = Field(min_length=1, max_length=200)
+    api_style: Literal['openai_compat','fal_queue','replicate','custom_http'] = 'openai_compat'
+    extra: dict = Field(default_factory=dict)
+
+    @field_validator('extra')
+    @classmethod
+    def extra_valid(cls, value):
+        import json
+        import math
+        import re
+        if len(json.dumps(value)) > 32000:
+            raise ValueError('extra 配置过大')
+        def check(obj):
+            if isinstance(obj,dict):
+                for k,v in obj.items():
+                    if re.search(r'api.?key|secret|token|authorization|password|headers|credential',k,re.I):
+                        raise ValueError('extra 不能存储凭据或认证头，请使用密钥管理器')
+                    check(v)
+            elif isinstance(obj,list):
+                for v in obj: check(v)
+            elif isinstance(obj,str) and obj.startswith(('http://','https://')):
+                parsed=urlsplit(obj)
+                if parsed.username or parsed.password or parsed.query or parsed.fragment:
+                    raise ValueError('配置 URL 不得含凭据或查询参数')
+        check(value)
+        for amount in value.get('pricing',{}).values():
+            if isinstance(amount,bool) or not isinstance(amount,(int,float)) or not math.isfinite(amount) or amount<0:
+                raise ValueError('单价须为有限非负数')
+        durations=value.get('supported_durations',[5,10])
+        if not isinstance(durations,list) or not durations or any(isinstance(d,bool) or not isinstance(d,(int,float)) or not math.isfinite(d) or d<=0 or d>300 for d in durations):
+            raise ValueError('模型支持时长无效')
+        for key in ('min_duration','max_duration'):
+            if key in value and (isinstance(value[key],bool) or not isinstance(value[key],(int,float)) or not math.isfinite(value[key]) or not 0<value[key]<=300):
+                raise ValueError('模型时长范围无效')
+        if ('min_duration' in value)!=('max_duration' in value) or value.get('min_duration',0)>value.get('max_duration',300):
+            raise ValueError('需要完整且有序的模型时长范围')
+        return value
 
     @field_validator('base_url')
     @classmethod
@@ -68,7 +106,7 @@ class SecretInput(Input):
     key: SecretStr
 
 
-def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now=None, remix_client_factory=None):
+def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now=None, remix_client_factory=None, clone_factories=None):
     settings = settings or Settings()
     secrets = secrets or KeyringSecrets()
 
@@ -77,6 +115,7 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
         db = Database(settings.data_dir / 'tiktol.sqlite3')
         app.state.db = db
         app.state.providers = Providers(db, secrets)
+        app.state.clone = CloneService(db, secrets, settings, clone_factories)
         app.state.remix = RemixService(db, secrets, settings,
             **({'client_factory': remix_client_factory} if remix_client_factory else {}))
         app.state.publisher = PublisherService(db, secrets, settings, now=publisher_now)
@@ -87,10 +126,15 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
             if not cancelled():
                 app.state.scheduler.account_operation(payload['account_id'], 'open_login')
 
+        def task_finished(task):
+            app.state.remix.task_finished(task)
+            app.state.clone.task_finished(task)
+
         app.state.queue = TaskQueue(db, {'download': Downloader(db, settings.data_dir),
+                                      **{'clone_' + op: app.state.clone.handler(op) for op in OPERATIONS},
                                       **{'remix_' + op: app.state.remix.handler(op) for op in ('analyze', 'plan', 'render')},
                                       'account_login': login_handler},
-                                    settings.concurrency, settings.retries, on_finished=app.state.remix.task_finished)
+                                    settings.concurrency, settings.retries, on_finished=task_finished)
         app.state.scheduler.start()
         try:
             yield
@@ -98,9 +142,10 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
             app.state.queue.close()
             app.state.scheduler.close()
 
-    app = FastAPI(title='TikTol M2', lifespan=lifespan)
+    app = FastAPI(title='TikTol M3', lifespan=lifespan)
     app.include_router(publisher_router(app))
     app.include_router(remix_router(app))
+    app.include_router(clone_router(app))
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', 'testserver'])
 
     @app.middleware('http')
@@ -152,6 +197,8 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
         try:
             if action == 'retry' and row['kind'].startswith('remix_'):
                 return app.state.remix.retry_task(app.state.queue, task_id)
+            if action == 'retry' and row['kind'].startswith('clone_'):
+                return app.state.clone.retry_task(app.state.queue, task_id)
             return getattr(app.state.queue, action)(task_id)
         except LookupError:
             raise HTTPException(404, '混剪项目不存在') from None
@@ -169,6 +216,8 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
             raise HTTPException(400, '需要存在的本地文件绝对路径')
         try:
             metadata = probe(path)
+            if path.suffix.lower() in ('.png','.jpg','.jpeg','.webp','.bmp') and metadata['width'] and metadata['duration']==0:
+                metadata['type']='image'
         except (ValueError, RuntimeError, OSError):
             raise HTTPException(400, '无法探测媒体，请检查文件和 ffprobe') from None
         return app.state.db.add_asset(path.resolve(), metadata)

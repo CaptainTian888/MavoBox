@@ -70,6 +70,30 @@ class Database:
                                ('browser_width', 'INTEGER'), ('browser_height', 'INTEGER')):
                 if name not in columns:
                     con.execute(f'ALTER TABLE accounts ADD COLUMN {name} {kind}')
+            columns = {row['name'] for row in con.execute('PRAGMA table_info(providers)')}
+            for name, kind in (('api_style', "TEXT NOT NULL DEFAULT 'openai_compat'"),
+                               ('extra', "TEXT NOT NULL DEFAULT '{}'")):
+                if name not in columns:
+                    con.execute(f'ALTER TABLE providers ADD COLUMN {name} {kind}')
+            con.executescript('''
+                CREATE TABLE IF NOT EXISTS clone_projects (
+                    id TEXT PRIMARY KEY, name TEXT NOT NULL, source_url TEXT, source_asset_id TEXT,
+                    hook_seconds REAL NOT NULL DEFAULT 5, mode TEXT NOT NULL DEFAULT 'hook',
+                    brief TEXT NOT NULL, analysis TEXT, treatment TEXT, script TEXT, timeline TEXT,
+                    status TEXT NOT NULL DEFAULT 'created', budget_usd REAL, spent_usd REAL NOT NULL DEFAULT 0,
+                    parent_id TEXT, variant_params TEXT NOT NULL DEFAULT '{}', output_asset_id TEXT,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS generated_media (
+                    id TEXT PRIMARY KEY, project_id TEXT NOT NULL, shot_id TEXT, kind TEXT NOT NULL,
+                    provider TEXT, prompt TEXT NOT NULL, cost_estimate REAL, status TEXT NOT NULL,
+                    path TEXT, attempt INTEGER NOT NULL DEFAULT 1, cache_key TEXT NOT NULL,
+                    job TEXT, metadata TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS clone_media_cache ON generated_media(cache_key,status);
+                CREATE TABLE IF NOT EXISTS clone_analysis_cache (cache_key TEXT PRIMARY KEY, analysis TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS clone_reservations (
+                    project_id TEXT PRIMARY KEY, root_id TEXT NOT NULL, amount REAL NOT NULL,
+                    unknown INTEGER NOT NULL DEFAULT 0);
+            ''')
 
     @contextmanager
     def connect(self):

@@ -42,7 +42,7 @@ class Downloader:
                 metadata = probe(target)
                 if cancelled():
                     raise Cancelled()
-                self.db.add_asset(target.resolve(), metadata)
+                return self.db.add_asset(target.resolve(), metadata)
         except BaseException:
             target.unlink(missing_ok=True)
             raise

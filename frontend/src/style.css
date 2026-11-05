@@ -10,3 +10,10 @@ label.check input { width: auto; }
 .badge.failed, .badge.banned_suspected { background: #ffd9d9; }
 .filters { display: flex; flex-wrap: wrap; gap: 1rem; }
 aside { border: 2px solid #777; padding: 1rem; overflow-wrap: anywhere; }
+/* M3 keeps the existing compact form language. */
+.clone-policy { padding: 1rem; border-left: 4px solid #a86c14; background: #fff7df; color: #503b16; }
+.clone-page textarea { width: 100%; box-sizing: border-box; min-height: 5rem; }
+.clone-page video { display: block; max-width: 100%; width: 270px; max-height: 480px; margin: .75rem 0; }
+.clone-page audio { display: block; max-width: 100%; }
+.clone-page select[multiple] { min-height: 7rem; }
+.clone-page ol li { padding: .5rem 0; }

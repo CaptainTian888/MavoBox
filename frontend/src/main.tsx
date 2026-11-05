@@ -3,12 +3,13 @@ import { createRoot } from 'react-dom/client';
 import './style.css';
 import {Publisher} from './publisher';
 import {Remix} from './remix';
+import {Clone} from './clone';
 
 type Task = {id: string; status: string; progress: number; error: string | null; attempts: number};
 type Asset = {id: string; path: string; type: string; duration: number; width: number | null; height: number | null};
-type Provider = {id: string; type: 'llm' | 'video_gen'; name: string; base_url: string; model: string; key_status: string};
+type Provider = {id: string; type: 'llm' | 'video_gen' | 'asr' | 'image_gen' | 'tts'; name: string; base_url: string; model: string; key_status: string; api_style: string; extra: Record<string, unknown>};
 type ProviderForm = Omit<Provider, 'id' | 'key_status'>;
-const empty: ProviderForm = {type: 'llm', name: '', base_url: '', model: ''};
+const empty: ProviderForm = {type: 'llm', name: '', base_url: '', model: '', api_style: 'openai_compat', extra: {}};
 
 async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(`/api${path}`, {method, headers: {'Content-Type': 'application/json'},
@@ -34,6 +35,7 @@ function App() {
   const [form, setForm] = useState<ProviderForm>(empty);
   const [editing, setEditing] = useState<string | null>(null);
   const [key, setKey] = useState('');
+  const [extra, setExtra] = useState('{}');
   const refresh = async () => {
     const [t, a, p] = await Promise.all([api<Task[]>('/tasks'), api<Asset[]>('/assets'), api<Provider[]>('/providers')]);
     setTasks(t); setAssets(a); setProviders(p);
@@ -51,18 +53,19 @@ function App() {
     finally { setBusy(false); }
   }
   async function saveProvider() {
-    const provider = await api<Provider>(editing ? `/providers/${editing}` : '/providers', editing ? 'PUT' : 'POST', form);
+    const provider = await api<Provider>(editing ? `/providers/${editing}` : '/providers', editing ? 'PUT' : 'POST', {...form, extra: JSON.parse(extra)});
     setEditing(provider.id); // Keep the created ID if the credential store fails; retry updates it.
     const entered = key; setKey('');
     if (entered) await api(`/secrets/${provider.id}`, 'PUT', {key: entered});
-    setForm(empty); setEditing(null); setNotice('配置已保存');
+    setForm(empty); setExtra('{}'); setEditing(null); setNotice('配置已保存');
   }
   return <main>
-    <header><h1>TikTol <small>本地视频工具 · M2</small></h1><p>下载片段、智能混剪与多账号定时发布</p></header>
-    <nav>{['下载', '素材库', '混剪', '账号', '发布', '设置'].map(p => <button key={p} aria-current={page === p ? 'page' : undefined} onClick={() => {setPage(p); setKey('');}}>{p}</button>)}</nav>
+    <header><h1>TikTol <small>本地视频工具 · M3</small></h1><p>下载片段、爆款克隆、智能混剪与多账号定时发布</p></header>
+    <nav>{['下载', '素材库', '混剪', '爆款克隆', '账号', '发布', '设置'].map(p => <button key={p} aria-current={page === p ? 'page' : undefined} onClick={() => {setPage(p); setKey('');}}>{p}</button>)}</nav>
     {error && <p role="alert" className="error">{error}</p>}{notice && <p role="status">{notice}</p>}
     {(page === '账号' || page === '发布') && <Publisher page={page}/>}
     {page === '混剪' && <Remix/>}
+    {page === '爆款克隆' && <Clone/>}
     {page === '下载' && <section><h2>下载前 N 秒</h2>
       <form onSubmit={e => {e.preventDefault(); void run(async () => {await api('/downloads', 'POST', {url, seconds}); setUrl('');});}}>
         <label>TikTok 链接<input required type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.tiktok.com/@…/video/…"/></label>
@@ -82,13 +85,15 @@ function App() {
     </tbody></table></div>{!assets.length && <p>暂无素材</p>}</section>}
     {page === '设置' && <section><h2>{editing ? '编辑 Provider' : '新增 Provider'}</h2>
       <form onSubmit={e => {e.preventDefault(); void run(saveProvider);}}>
-        <label>类型<select value={form.type} onChange={e => setForm({...form, type: e.target.value as ProviderForm['type']})}><option value="llm">LLM</option><option value="video_gen">视频生成</option></select></label>
+        <label>类型<select value={form.type} onChange={e => setForm({...form, type: e.target.value as ProviderForm['type']})}>{Object.entries({llm:'LLM',video_gen:'视频生成',asr:'语音转写',image_gen:'图片生成',tts:'配音'}).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
+        <label>接口风格<select value={form.api_style} onChange={e=>setForm({...form,api_style:e.target.value})}>{['openai_compat','fal_queue','replicate','custom_http'].map(v=><option key={v}>{v}</option>)}</select></label>
+        <label>高级配置 JSON（单价、模型时长、端点模板；禁止填写密钥）<textarea value={extra} onChange={e=>setExtra(e.target.value)} rows={7}/></label>
         {(['name', 'base_url', 'model'] as const).map(field => <label key={field}>{({name: '名称', base_url: 'Base URL', model: '模型'})[field]}<input required type={field === 'base_url' ? 'url' : 'text'} value={form[field]} onChange={e => setForm({...form, [field]: e.target.value})}/></label>)}
         <label>API Key（留空保留原值）<input type="password" autoComplete="new-password" value={key} onChange={e => setKey(e.target.value)}/></label>
-        <button disabled={busy}>保存</button><button type="button" onClick={() => {setEditing(null); setForm(empty); setKey('');}}>清空表单</button>
+        <button disabled={busy}>保存</button><button type="button" onClick={() => {setEditing(null); setForm(empty); setExtra('{}'); setKey('');}}>清空表单</button>
       </form><p>Key 保存至系统凭据管理器，保存后不回显。混剪分析和编排会调用选定的 LLM。</p>
       {providers.map(p => <article key={p.id}><strong>{p.name}</strong> · {p.type} · {p.model}<p>{p.base_url} · Key {p.key_status}</p>
-        <button disabled={busy} onClick={() => {setEditing(p.id); setForm({type: p.type, name: p.name, base_url: p.base_url, model: p.model}); setKey('');}}>编辑</button>
+        <button disabled={busy} onClick={() => {setEditing(p.id); setForm({type: p.type, name: p.name, base_url: p.base_url, model: p.model,api_style:p.api_style,extra:p.extra}); setExtra(JSON.stringify(p.extra,null,2)); setKey('');}}>编辑</button>
         <button disabled={busy} onClick={() => void run(async () => {await api(`/providers/${p.id}`, 'DELETE'); if (editing === p.id) {setEditing(null); setForm(empty); setKey('');}})}>删除</button>
       </article>)}</section>}
   </main>;

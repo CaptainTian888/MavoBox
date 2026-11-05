@@ -1,6 +1,6 @@
 # TikTol M2
 
-FastAPI + SQLite 后端和 React / TypeScript / Vite 前端，仅用于本机。保留 M0 下载和 M1 多账号发布，新增 M2 智能混剪：镜头切分、关键帧理解、LLM 时间线、手动编辑及 ffmpeg 竖屏渲染。PLAN.md 保持原样；Tauri、M3 钩子复刻和视频生成调用留到后续。
+FastAPI + SQLite 后端和 React / TypeScript / Vite 前端，仅用于本机。保留 M0 下载、M1 多账号发布及 M2 智能混剪，新增 M3 爆款克隆：参考解读、Brief / Treatment / Script、预算确认、生成素材、词级字幕、竖屏成片及批量变体。PLAN.md 保持原样，Tauri 尚未实现。M3 当前实现与验证边界见本文末尾。
 
 ## 安装（宿主机联网执行）
 
@@ -190,3 +190,138 @@ npm.cmd run build
 ```
 
 **未验证**：真实 LLM 多模态调用、各 Provider JSON/图片格式兼容性、真实素材规模下的模型成本与吞吐、浏览器页面交互和中文字体视觉效果。未联网、未安装依赖、未更新 uv.lock、未执行 Git 操作。独立审查留给宿主 Claude，本轮由 GPT 实现与离线测试。
+
+## M3 爆款克隆（钩子复刻）
+
+本模块为独立实现，只使用“理解结构、迁移角色、重建镜头”的方法思想，没有下载、复制或使用 Hypit 的源码、文档文字或 SVML。默认只分析前 5 秒，可选整条（最长 3600 秒）。参考视频的画面、原音与音乐不进入生成时间线。产品证据、人物肖像、上传素材与用户 BGM 的使用权由用户确认；发布生成内容应勾选 AI 标注。
+
+### 使用路径
+
+1. 在设置配置多模态 `llm`、`video_gen`、`tts`；可选 `asr` 与 `image_gen`。API Key 仍只存系统凭据管理器。`extra` 禁止凭据、认证头及含凭据的 URL。
+2. 打开「爆款克隆」，粘贴 HTTPS TikTok 链接，或选择素材库视频 / 上传本地文件。其他平台先自行下载再导入；在线解析复用现有 TikTok 下载器。
+3. 在 Brief 选择 Provider 并保存，然后预览分析费用、确认并解读。可查看词级转写、beat 时间轴、作用说明及不确定问题。未配置 ASR 时只解读画面，不编造参考台词；抽帧本身不能确认音乐或音效。
+4. 填写产品名、真实卖点与证据、禁用词、人物/产品图、目标语言/时长、风格、voice、变体数与预算。可选用户 BGM、自己的后半段视频。人物/产品图可用文件上传或素材库多选。
+5. 预览规划费用并确认，生成 Treatment 和 Script。Treatment 分离角色迁移说明与实际镜头；Script 是唯一口播来源，`display` 为显示文字、`spoken` 为读音。可编辑两份 JSON，保存时严格校验。
+6. 生成素材前先 dry run，看缓存命中、已知费用、未知单价、共享预算和费用预留，再确认调用。逐镜头可预览、重新生成、替换上传素材或使用参考图 Ken Burns 静态兜底。发生“提交结果未知”时先核查供应商账单，不会自动重复付费 POST；确认后可强制重生成。
+7. 组装时间线并渲染。配音按段合成，ASR 用于确定词时间；无法可靠按词匹配或无 ASR 时按 Script 读音字符权重估算时间并标注 `estimated`。字幕采用 ASS `kf` 逐词高亮，镜头按台词词区间切换，源镜头音轨全部静音。每段的最后一个镜头包含音频尾部静音，不丢尾音。
+8. 一个 Brief 可展开最多 20 个变体。`person` 候选是已选择的参考图 asset ID，`product` / `dialogue` / `style` / `cta` 是文本候选；按维度笛卡尔积取前 N 个，不足 N 个则拒绝。变体共用参考解读与素材缓存。可逐个操作，也可从根项目预览全部变体的规划/生成合计费用，再批量规划或生成成片（生成后自动组装、渲染）。全局 TaskQueue 限制并发，同一项目只允许一个活动任务。
+
+编辑 Brief 会使旧方案、时间线与输出关联失效；编辑 Script / Treatment 会使时间线和输出关联失效。组装只选择与当前方案指纹匹配的音频/视频，不使用旧台词的配音。排队后 Provider 配置若变化，任务暂停为 `needs_attention`，须重新确认。删除项目只删记录，保留付费素材以便缓存复用；有子项目的根项目须先删除子项目。
+
+### Provider 配置
+
+旧数据库仅增量迁移：检测 `PRAGMA table_info(providers)` 后添加 `api_style`、`extra`，重复启动不重复 ALTER；旧配置默认 `openai_compat` / `{}`。
+
+| type | api_style | Base URL 与接口 |
+|---|---|---|
+| llm | openai_compat | Base URL 通常以 `/v1` 结尾，追加 `/chat/completions`；必须支持 image_url |
+| asr | openai_compat | 追加 `/audio/transcriptions`，multipart、verbose_json、timestamp_granularities[]=word |
+| image_gen | openai_compat | 无参考图 `/images/generations`；有参考图 multipart `/images/edits` |
+| tts | openai_compat | `/audio/speech`，请求 WAV，voice 来自 Brief |
+| video_gen | fal_queue | Base URL 使用队列根，例如 `https://queue.fal.run`；POST `/{model}`，Key 认证，保存 request_id/status_url/response_url |
+| video_gen | replicate | Base URL 使用根，例如 `https://api.replicate.com`；POST `/v1/predictions`，model 填供应商要求的 version 标识；Bearer 认证 |
+| video_gen | custom_http | submit_path / poll_path / body_template / JSON 路径均在 extra 配置；Bearer 认证 |
+
+OpenAI 兼容的视频 Provider 尚无统一标准；对它应选择 `custom_http` 并配置模板。`openai_compat` 视频类型也按 custom_http 默认 `/jobs` 接口处理。轮询认证 URL 必须与配置 Base URL 同源，拒绝跨主机发送密钥。结果下载不附认证头，不自动跟随重定向，须得到直接结果 URL。
+
+示例 `extra`（视频，单价由用户填写，示例数字不是供应商报价）：
+
+```json
+{
+  "supported_durations": [5, 10],
+  "pricing": {"per_second": 0.05},
+  "defaults": {},
+  "poll_seconds": 2,
+  "timeout_seconds": 900,
+  "image_upload": "data_url"
+}
+```
+
+可用 `min_duration` 与 `max_duration` 替代离散 `supported_durations`，必须同时提供；没有配置时只允许 5/10 秒。费用键：LLM `per_request`（分析最多 3 次、规划最多 6 次）、视频 `per_second`、图片 `per_image`、TTS `per_character`、ASR `per_minute`。没有键就是“未知”，不是免费；显式 0 表示该服务不收费。支持端点覆盖 `transcriptions_path`、`speech_path`、`generations_path`、`edits_path`。
+
+custom_http 示例：
+
+```json
+{
+  "submit_path": "/jobs",
+  "poll_path": "/jobs/{job_id}",
+  "job_id_path": "data.id",
+  "status_path": "data.status",
+  "result_path": "data.outputs.0.url",
+  "success_statuses": ["succeeded", "completed"],
+  "body_template": {
+    "model": "{model}",
+    "input": {"images": "{images}", "prompt": "{prompt}", "duration": "{duration}", "aspect": "{aspect}"}
+  },
+  "supported_durations": [5, 10]
+}
+```
+
+模板是 JSON 树替换，不执行代码。整值 `{images}` / `{duration}` 保持数组/数值类型；支持 `{image}`（第一张）、`{prompt}`、`{model}`、`{aspect}`。JSON 路径使用点分隔字段和数组下标。`image_upload: "upload"` 时需提供 `upload_path` 和 `upload_result_path`，multipart 字段为 `file`；默认使用 data URL。对多张参考图，使用 image_gen 合成同一首帧，或视频模板 `{images}` / `multi_image_field` 指向模型的多图输入字段，不能悄悄只保留第一个主体。
+
+image_gen 会先生成逐主体锚图；多主体镜头额外生成组合首帧，并纳入费用估算。锚图与最终视频都有参数/输入文件内容哈希缓存。缓存键包含 Provider 配置及模型、不包含 API Key。相同缓存键有进程内互斥锁，避免并发变体同时提交同一请求。
+
+### 预算、恢复和状态
+
+分析、规划、生成默认 `dry_run:true`，只返回费用/计划，不调用付费服务。真正执行需要 `dry_run:false`，未知/非零费用或超过根预算时还需要 `confirm_budget:true`。明确确认代表接受当前显示的未知费用或超支；预算不是供应商硬性扣费上限。根项目及其所有变体的 `spent_usd` 与未完成任务预留一起参与检查。批量运行先检查所有子项目，再按合计费用确认。
+
+`spent_usd` 是保守估计，不是供应商实际账单：分析/规划按最大 JSON 修正请求次数预留并记账；生成提交按配置估价记录，即使请求失败也不假定供应商未收费。未知单价的实际金额不会被编造为零，费用项保持 null，已知小计单独显示。ASR 按目标时长估算，真实 TTS 时长、模型重试、供应商最小计费单位等均可能令账单偏离。缓存命中不新增费用。
+
+状态：`created → analyzing → analyzed → planning → planned → generating → planned（素材已就绪）→ assembling → assembled → rendering → rendered`，异常为 `failed` / `needs_attention`。批量成片跳过手动组装点击。每个阶段可独立重跑。取消通过共用 `/api/tasks/{id}/cancel`，每镜头循环、轮询、退避和 ffmpeg 可取消；正在进行的同步 HTTP 最多等当前超时返回（90 秒），本地取消不等于供应商远程作业取消。
+
+付费 POST 不自动重发，GET 轮询/下载遇限流或暂态错误最多退避重试两次。已拿到的远程 job 信息保存在 generated_media 的内部 job 字段，不经媒体 API 返回；下次非强制生成继续轮询，避免重复提交。TTS 已完成但后续失败时保存音频以便继续。应用中断后预留释放；遗留付费任务没有有效预留就拒绝调用，必须从项目入口重新确认。未知提交结果不自动重发，用户可核查后选择强制生成；静态兜底与用户素材替换不调用付费 API。不可用/损坏的下载结果不登记成功，视频下载后以 ffprobe 验证。
+
+### M3 API
+
+所有项目路径前缀为 `/api/clone/projects`；错误保持中文，不回显第三方异常和密钥。沿用应用的本机 Origin/Host 限制。
+
+| 方法 | 路径 | 请求 / 用途 |
+|---|---|---|
+| GET / POST | `/api/clone/projects` | 列表 / 新建 `{name,source_url或source_asset_id,hook_seconds:5,mode:"hook",brief:{...}}` |
+| GET / PUT / DELETE | `/api/clone/projects/{id}` | 读取 / 全量更新并使派生结果失效 / 删除项目记录 |
+| POST | `/{id}/analyze` | `{dry_run:true}` 估算；`{dry_run:false,confirm_budget:true}` 排队分析 |
+| GET | `/{id}/analysis` | 结构化 Analysis |
+| PUT | `/{id}/brief` | 完整 Brief JSON |
+| POST | `/{id}/plan` | dry run / 确认后生成 Treatment 与 Script |
+| PUT | `/{id}/script`、`/{id}/treatment` | 完整 JSON，严格校验与引用检查 |
+| POST | `/{id}/generate` | dry run / 确认后生成；可选 `force`、`auto_assemble_render` |
+| POST | `/{id}/shots/{shot_id}/regenerate` | 同生成选项，可选 `force:true`、`fallback:true` 或 `replacement_asset_id` |
+| POST | `/{id}/assemble` | 将当前生成结果按词级时间组装 |
+| POST | `/{id}/render` | 渲染并登记 output_asset_id |
+| POST | `/{id}/variants` | `{count,dimensions:{style:[...],cta:[...]}}`，创建子项目 |
+| POST | `/{id}/batch/plan`、`/{id}/batch/generate` | 全部变体合计 dry run / 确认后批量规划或生成成片 |
+| GET | `/{id}/cost` | 生成估算；可选 `shot_id`、`force` 查询单镜头重生成费用 |
+| GET | `/{id}/media` | 逐生成物状态、尝试次数、费用与降级标记（不返回远程 job） |
+| GET | `/api/clone/media/{media_id}` | 仅服务已登记且位于 clone 目录中的生成文件 |
+| GET | `/api/clone/output/{asset_id}` | 成片预览 |
+| POST | `/api/clone/assets/upload?kind=image或video或audio` | 原始二进制请求体，最大 512MB，ffprobe 校验后登记 |
+
+Script 段内 `words` 包含 `{display,spoken,marks:["emphasis"或"cta"或"cut"或"pause"]}`。Treatment 镜头的 `audio_ref` 引用段 ID，`word_start` / `word_end` 为从 0 开始、包含末词的范围。所有镜头词区间必须按顺序覆盖所有段的所有词，不能遗漏或重叠。为了可靠地把 B-roll 放在语义点，可以在编辑 Treatment 时将同一段分给相邻镜头。当前语义标记用于编排信息，ASS 对所有词使用同一种逐词高亮样式。
+
+时间线保留 M2 的 version=1 和 clips 结构，扩展字段统一使用 `clone_` 前缀；调用 M2 renderer 前去掉扩展字段，复用其格式归一化和竖屏渲染，然后添加配音、ASS、BGM，最后按需接用户后半段。M2 schema 和行为不变。实际成片长度跟随 TTS/词时间，名义镜头时长用于生成和预算；若单镜头变速超出 0.25–4 倍则拒绝组装，需改台词/镜头时长。没有自动修改台词来硬凑秒数。
+
+### 文件与验证交接
+
+新增：
+
+- `backend/modules/clone/`：`schemas.py`、`brief.py`、`analysis.py`、`treatment.py`、`script.py`、`generation.py`、`assemble.py`、`variants.py`、`service.py` 及包初始化。
+- `backend/modules/clone/adapters/`：`base.py`、`llm_client.py`（复用 M2）、`asr_client.py`、`image_client.py`、`tts_client.py`、`video_client.py` 及包初始化。
+- `backend/api/clone.py`、`frontend/src/clone.tsx`。
+- `backend/tests/test_clone.py`、`test_clone_adapters.py`、`test_clone_flow.py`：HTTP MockTransport、迁移、校验/修正、缓存、预算、变体、API 全流程及真实 ffmpeg/ASS 集成测试代码。
+
+修改：`backend/core/db.py`、`backend/core/providers.py`、`backend/api/app.py`、`backend/modules/downloader.py`（返回登记的 asset，原下载 API 不变）、`frontend/src/main.tsx`、`frontend/src/style.css`、`README.md`。新增表为 clone_projects、generated_media、clone_analysis_cache、clone_reservations。没有改 PLAN.md，没有增加依赖，没有联网安装或 Git 操作。
+
+本轮由 GPT 直接实现，使用用户提供的 Claude brief；没有调用 Claude/Claude-cx、Gemini 或外部角色，也没有自行做独立审查。宿主已确认的基线是 **53 passed / 1 skipped、前端 build 通过**。上面 M2 章节的旧沙箱测试记录属于历史记录，不是这次基线。
+
+按本轮要求，**没有运行 uv、pytest、Vite 或基线验证**。仅对 backend/core、api、modules、tests 执行 Python compileall，以及前端 `tsc --noEmit` 静态检查；这些不证明运行时测试或完整构建通过。首次对 backend 根目录 compileall 遇到 `.pytest_cache` 无法列出，随后改为只编译源码目录并通过，没有因此停工。
+
+宿主机应执行（不需要重新安装依赖）：
+
+```powershell
+cd D:\下载\tiktol\backend
+uv run pytest -q
+cd ..\frontend
+npm.cmd run build
+```
+
+宿主 Claude 应独立验收测试结果与 diff，尤其预算并发、恢复幂等性、ASS 字幕视觉效果与请求字段。真实 fal / Replicate / OpenAI 兼容接口的字段、模型版本、队列 URL、上传协议和多图支持未实测；真实视频质量、人物/产品一致性、中文字体与浏览器完整交互未验证。缓存与预算均为本地单服务进程设计，不支持同时运行两个后端实例对同一数据库进行付费生成。人物一致性依赖供应商模型能力，锚图不是效果保证。
