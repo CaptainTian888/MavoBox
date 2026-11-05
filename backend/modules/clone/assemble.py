@@ -6,7 +6,7 @@ from uuid import uuid4
 from core.ffmpeg import probe
 from core.queue import Cancelled
 from modules.remix.planner import Timeline, duration as timeline_duration
-from modules.remix.renderer import render as remix_render, run_ffmpeg
+from modules.remix.renderer import LOUDNESS_TARGET, render as remix_render, run_ffmpeg
 
 
 def build_timeline(treatment, script, media, width=1080, height=1920, transition=False):
@@ -107,6 +107,9 @@ def render(timeline, target, brief, db, progress=lambda _: None, cancelled=lambd
                 filters += [f'[{count+1}:a]volume=0.15,atrim=duration={length},afade=t=out:st={max(0,length-1)}:d=1[music]',
                             '[voice][music]amix=inputs=2:duration=first:normalize=0[mixed]']
                 voice='mixed'
+            # Bring the voice + music mix to the short-video loudness target (the user's own tail is left untouched).
+            filters.append(f'[{voice}]loudnorm=I={LOUDNESS_TARGET}:TP=-1.5:LRA=11,aresample=48000[normed]')
+            voice='normed'
             filters += ["[0:v]ass=filename=captions.ass:fontsdir=.[captioned]"]
             main=work/'main.mp4'
             args += ['-filter_complex',';'.join(filters),'-map','[captioned]','-map',f'[{voice}]','-t',str(length),

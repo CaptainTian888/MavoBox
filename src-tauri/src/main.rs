@@ -84,11 +84,32 @@ fn start_backend(exe: &PathBuf) -> Result<(Child, String), String> {
     });
     match rx.recv_timeout(Duration::from_secs(60)) {
         Ok(url) => Ok((child, url)),
-        Err(_) => {
+        Err(mpsc::RecvTimeoutError::Timeout) => {
             let _ = child.kill();
-            Err("后端在 60 秒内未就绪（或无法读取已运行实例的地址）".into())
+            Err("后端在 60 秒内没有就绪。可能是电脑较慢、被杀毒软件扫描或拦截。".into())
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            // The backend closed its output before saying it was ready: it exited on startup.
+            let code = child.wait().ok().and_then(|s| s.code());
+            Err(format!(
+                "后端启动后立即退出（退出码 {}）。常见原因：被杀毒软件拦截、数据目录无法写入、已有另一个实例异常占用。",
+                code.map(|c| c.to_string()).unwrap_or_else(|| "未知".into())
+            ))
         }
     }
+}
+
+/// Percent-encodes a message for use in a query string (std has no helper for this).
+fn encode_component(text: &str) -> String {
+    let mut out = String::new();
+    for b in text.bytes() {
+        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{:02X}", b));
+        }
+    }
+    out
 }
 
 /// Checks the update feed once at startup (silently ignores network/feed errors) and, if the
@@ -134,17 +155,35 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .manage(Backend(Mutex::new(None)))
         .setup(|app| {
-            let exe = server_exe(app.handle());
-            let (child, url) = start_backend(&exe)?;
-            *app.state::<Backend>().0.lock().unwrap() = Some(child);
-            let parsed = url
-                .parse()
-                .map_err(|_| format!("后端返回了无效地址: {url}"))?;
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::External(parsed))
+            // Show a window right away (a small local "starting…" page) instead of nothing for the
+            // seconds the backend needs; then point it at the backend, or at an error page.
+            let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("loading.html".into()))
                 .title("MAVO BOX")
                 .inner_size(1280.0, 860.0)
                 .build()?;
-            check_for_update(app.handle().clone());
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let exe = server_exe(&handle);
+                match start_backend(&exe) {
+                    Ok((child, url)) => {
+                        *handle.state::<Backend>().0.lock().unwrap() = Some(child);
+                        match url.parse::<tauri::Url>() {
+                            Ok(parsed) => {
+                                let _ = window.navigate(parsed);
+                                check_for_update(handle.clone());
+                            }
+                            Err(_) => {
+                                let msg = encode_component(&format!("后端返回了无效地址: {url}"));
+                                let _ = window.eval(&format!("location.replace('failed.html?msg={msg}')"));
+                            }
+                        }
+                    }
+                    Err(message) => {
+                        let msg = encode_component(&message);
+                        let _ = window.eval(&format!("location.replace('failed.html?msg={msg}')"));
+                    }
+                }
+            });
             Ok(())
         })
         .build(tauri::generate_context!())

@@ -1,8 +1,10 @@
 from concurrent.futures import ThreadPoolExecutor
 import json
+import logging
 from threading import Event, RLock
 from uuid import uuid4
 from .db import now
+from .logs import scrub
 
 
 class Cancelled(Exception):
@@ -75,8 +77,10 @@ class TaskQueue:
             except Cancelled:
                 self.db.execute("UPDATE tasks SET status='cancelled' WHERE id=?", (task_id,))
                 return
-            except Exception:
-                # Never persist third-party exception text: it may contain credentials or URLs.
+            except Exception as exc:
+                # Never persist third-party exception text in the DB: it may contain credentials or URLs.
+                # The log file gets the type and a scrubbed, truncated message for support purposes only.
+                logging.getLogger('mavobox.queue').warning('task %s (%s) failed: %s: %s', task_id[:8], row['kind'], type(exc).__name__, scrub(str(exc)[:300]))
                 with self.lock:
                     current = self.get(task_id)
                     if cancelled() or current['status'] == 'cancelled':

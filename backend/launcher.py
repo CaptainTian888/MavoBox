@@ -50,8 +50,12 @@ def main(argv=None):
     port = pick_port(args.port)
     os.environ['TIKTOL_PORT'] = str(port)
 
+    import logging
     import uvicorn
     from api.app import create_app
+    from core import logs
+    logs.setup(data_dir)
+    logging.getLogger('mavobox').info('starting MAVO BOX (frozen=%s)', getattr(sys, 'frozen', False))
 
     app = create_app(Settings(license_required=getattr(sys, 'frozen', False) or os.environ.get('TIKTOL_REQUIRE_LICENSE') == '1'))
     url = f'http://127.0.0.1:{port}'
@@ -60,7 +64,7 @@ def main(argv=None):
     if not args.no_browser:
         threading.Thread(target=lambda: (time.sleep(1.5), webbrowser.open(url)), daemon=True).start()
     try:
-        uvicorn.run(app, host='127.0.0.1', port=port, log_level='warning')
+        uvicorn.run(app, host='127.0.0.1', port=port, log_level='warning', log_config=None)
     finally:
         lock.release()
     return 0

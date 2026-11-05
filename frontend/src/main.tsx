@@ -4,7 +4,8 @@ import './style.css';
 import {Publisher} from './publisher';
 import {Remix} from './remix';
 import {Clone} from './clone';
-import {Gate, Setup, needsSetup} from './onboarding';
+import {Gate, Setup, needsSetup, Diagnostics} from './onboarding';
+import {QACheck} from './qa';
 
 type Task = {id: string; status: string; progress: number; error: string | null; attempts: number};
 type Asset = {id: string; path: string; type: string; duration: number; width: number | null; height: number | null};
@@ -83,8 +84,8 @@ function App() {
       </article>)}</section>}
     {page === '素材库' && <section><h2>素材库</h2><form onSubmit={e => {e.preventDefault(); void run(async () => {await api('/assets', 'POST', {path}); setPath('');});}}>
       <label>本地文件绝对路径<input required value={path} onChange={e => setPath(e.target.value)} placeholder="D:\Videos\clip.mp4"/></label><button disabled={busy}>添加素材</button>
-    </form><div className="table"><table><thead><tr><th>路径</th><th>类型</th><th>时长</th><th>尺寸</th></tr></thead><tbody>
-      {assets.map(a => <tr key={a.id}><td>{a.path}</td><td>{a.type}</td><td>{a.duration.toFixed(2)}s</td><td>{a.width ?? '—'} × {a.height ?? '—'}</td></tr>)}
+    </form><div className="table"><table><thead><tr><th>路径</th><th>类型</th><th>时长</th><th>尺寸</th><th>质检</th></tr></thead><tbody>
+      {assets.map(a => <tr key={a.id}><td>{a.path}</td><td>{a.type}</td><td>{a.duration.toFixed(2)}s</td><td>{a.width ?? '—'} × {a.height ?? '—'}</td><td>{a.type === 'video' ? <QACheck assetId={a.id}/> : '—'}</td></tr>)}
     </tbody></table></div>{!assets.length && <p>暂无素材</p>}</section>}
     {page === '设置' && <section><h2>{editing ? '编辑 Provider' : '新增 Provider'}</h2>
       <form onSubmit={e => {e.preventDefault(); void run(saveProvider);}}>
@@ -98,7 +99,7 @@ function App() {
       {providers.map(p => <article key={p.id}><strong>{p.name}</strong> · {p.type} · {p.model}<p>{p.base_url} · Key {p.key_status}</p>
         <button disabled={busy} onClick={() => {setEditing(p.id); setForm({type: p.type, name: p.name, base_url: p.base_url, model: p.model,api_style:p.api_style,extra:p.extra}); setExtra(JSON.stringify(p.extra,null,2)); setKey('');}}>编辑</button>
         <button disabled={busy} onClick={() => void run(async () => {await api(`/providers/${p.id}`, 'DELETE'); if (editing === p.id) {setEditing(null); setForm(empty); setKey('');}})}>删除</button>
-      </article>)}</section>}
+      </article>)}<h2>遇到问题？</h2><Diagnostics/></section>}
   </main>;
 }
 

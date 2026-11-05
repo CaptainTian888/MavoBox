@@ -64,8 +64,11 @@ def has_audio(path):
     return bool(json.loads(result.stdout)['streams'])
 
 
+LOUDNESS_TARGET = -14.0   # LUFS, short-video delivery level; pass loudness=None to render() to skip normalisation
+
+
 def render(timeline, assets, target, progress=lambda _: None, cancelled=lambda: False,
-           fit='crop', font_path=''):
+           fit='crop', font_path='', loudness=LOUDNESS_TARGET):
     target = Path(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     width, height, fps = timeline['width'], timeline['height'], timeline['fps']
@@ -156,6 +159,9 @@ def render(timeline, assets, target, progress=lambda _: None, cancelled=lambda: 
                 filters += [f'[{len(clips)}:a]aresample=48000,volume={bgm["volume"]},atrim=duration={elapsed},afade=t=out:st={elapsed-d}:d={max(d, .001)}[music]',
                     f'[{audio}]volume=0.6[original]', '[original][music]amix=inputs=2:duration=first:normalize=0[mixed]']
                 audio = 'mixed'
+            if loudness is not None:
+                filters.append(f'[{audio}]loudnorm=I={loudness}:TP=-1.5:LRA=11,aresample=48000[final]')
+                audio = 'final'
             args += ['-filter_complex_threads', '1', '-filter_complex', ';'.join(filters), '-map', f'[{video}]', '-map', f'[{audio}]',
                 '-t', str(duration(timeline)), '-r', str(fps), '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
                 '-c:a', 'aac', '-movflags', '+faststart', str(target)]

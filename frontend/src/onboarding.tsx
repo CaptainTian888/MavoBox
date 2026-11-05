@@ -43,17 +43,36 @@ export function Gate({children}: {children: React.ReactNode}) {
         <button>激活</button>
       </form>
       {error && <p role="alert" className="error">{error}</p>}
+      <h2>遇到问题？</h2>
+      <Diagnostics/>
     </section>
   </main>;
 }
 
+
+/** Support helper: copy a secret-free diagnostics report / open the log folder. */
+export function Diagnostics() {
+  const [text, setText] = useState('');
+  const [msg, setMsg] = useState('');
+  const load = () => api<{text: string}>('/diagnostics').then(r => {setText(r.text); return r.text;});
+  const copy = () => load().then(t => navigator.clipboard?.writeText(t).then(() => setMsg('已复制诊断报告，粘贴发给老师即可（不含 API Key、授权码和账号信息）。'), () => setMsg('复制失败，请展开报告后手动选中复制。')))
+    .catch(e => setMsg((e as Error).message));
+  return <div>
+    <p><small>软件出问题时，先点"复制诊断报告"再发给老师，能最快定位原因。</small></p>
+    <button type="button" onClick={() => void copy()}>复制诊断报告</button>{' '}
+    <button type="button" onClick={() => void api('/diagnostics/open-logs', 'POST').catch(e => setMsg((e as Error).message))}>打开日志文件夹</button>
+    {msg && <p role="status">{msg}</p>}
+    {text && <details open><summary>报告内容</summary><pre style={{maxHeight: '14rem', overflow: 'auto'}}>{text}</pre></details>}
+  </div>;
+}
+
 const presets = [
-  {label: '大模型 LLM（OpenAI 兼容）', type: 'llm', base_url: 'https://api.openai.com/v1', model: 'gpt-4o-mini', api_style: 'openai_compat', hint: '用于视频理解、脚本与混剪编排；需支持图片输入。可换成任何 OpenAI 兼容服务（改地址和模型名）。'},
-  {label: '语音转写 ASR', type: 'asr', base_url: 'https://api.openai.com/v1', model: 'whisper-1', api_style: 'openai_compat', hint: '给参考视频和配音生成词级时间。'},
-  {label: '配音 TTS', type: 'tts', base_url: 'https://api.openai.com/v1', model: 'tts-1', api_style: 'openai_compat', hint: '把新台词合成为语音。'},
-  {label: '图片生成', type: 'image_gen', base_url: 'https://api.openai.com/v1', model: 'gpt-image-1', api_style: 'openai_compat', hint: '为人物/产品生成一致的定妆图。'},
-  {label: '视频生成（fal.ai 队列）', type: 'video_gen', base_url: 'https://queue.fal.run', model: 'fal-ai/kling-video/v2.1/standard/image-to-video', api_style: 'fal_queue', hint: '模型 ID 仅为示例，请以 fal.ai 官网文档为准；单价请在「设置」的高级配置里填写 pricing，否则费用显示为未知。'},
-  {label: '视频生成（Replicate）', type: 'video_gen', base_url: 'https://api.replicate.com', model: '', api_style: 'replicate', hint: '模型版本号请到 Replicate 模型页复制。'},
+  {label: '大模型 LLM（OpenAI 兼容）', type: 'llm', base_url: 'https://api.openai.com/v1', model: 'gpt-4o-mini', api_style: 'openai_compat', hint: '用于视频理解、脚本与混剪编排；需支持图片输入。可换成任何 OpenAI 兼容服务（改地址和模型名）。', pricing: 'https://openai.com/api/pricing/'},
+  {label: '语音转写 ASR', type: 'asr', base_url: 'https://api.openai.com/v1', model: 'whisper-1', api_style: 'openai_compat', hint: '给参考视频和配音生成词级时间。', pricing: 'https://openai.com/api/pricing/'},
+  {label: '配音 TTS', type: 'tts', base_url: 'https://api.openai.com/v1', model: 'tts-1', api_style: 'openai_compat', hint: '把新台词合成为语音。', pricing: 'https://openai.com/api/pricing/'},
+  {label: '图片生成', type: 'image_gen', base_url: 'https://api.openai.com/v1', model: 'gpt-image-1', api_style: 'openai_compat', hint: '为人物/产品生成一致的定妆图。', pricing: 'https://openai.com/api/pricing/'},
+  {label: '视频生成（fal.ai 队列）', type: 'video_gen', base_url: 'https://queue.fal.run', model: 'fal-ai/kling-video/v2.1/standard/image-to-video', api_style: 'fal_queue', hint: '模型 ID 仅为示例，请以 fal.ai 官网文档为准；单价请在「设置」的高级配置里填写 pricing，否则费用显示为未知。', pricing: 'https://fal.ai/pricing'},
+  {label: '视频生成（Replicate）', type: 'video_gen', base_url: 'https://api.replicate.com', model: '', api_style: 'replicate', hint: '模型版本号请到 Replicate 模型页复制。', pricing: 'https://replicate.com/pricing'},
 ] as const;
 
 function Row({ok, label, detail}: {ok: boolean; label: string; detail?: string | null}) {
@@ -107,7 +126,7 @@ export function Setup({onDone}: {onDone?: () => void}) {
     <h3>② 配置 AI 服务（按需，可稍后在「设置」里改）</h3>
     <p>Key 只保存在你自己的电脑里。没有某项服务可以先跳过，对应功能暂时不可用。</p>
     <label>服务类型<select value={sel} onChange={e => pick(Number(e.target.value))}>{presets.map((p, i) => <option key={p.label} value={i}>{p.label}</option>)}</select></label>
-    <p><small>{preset.hint}</small></p>
+    <p><small>{preset.hint}{' '}<a href={preset.pricing} target="_blank" rel="noreferrer">查看价格页</a>（价格以服务商官网为准，请据此在高级配置里填写单价，费用估算才准确）</small></p>
     <form onSubmit={e => {e.preventDefault(); void saveProvider();}}>
       <label>接口地址<input required value={form.base_url} onChange={e => setForm({...form, base_url: e.target.value})}/></label>
       <label>模型<input value={form.model} onChange={e => setForm({...form, model: e.target.value})}/></label>
@@ -115,6 +134,8 @@ export function Setup({onDone}: {onDone?: () => void}) {
       <button>保存</button>
     </form>
     {notice && <p role="status">{notice}</p>}
+    <h3>遇到问题？</h3>
+    <Diagnostics/>
     <h3>③ 开始使用</h3>
     <button disabled={!ready && !env?.ffmpeg.ok} onClick={onDone}>{ready ? '一切就绪，开始使用' : '先跳过，进入应用'}</button>
   </section>;

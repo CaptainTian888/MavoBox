@@ -94,3 +94,27 @@ def test_headless_shell_required_for_complete_browser_install(tmp_path):
     shell = tmp_path / 'chromium_headless_shell-1194' / 'chrome-win'
     shell.mkdir(parents=True); (shell / 'chrome-headless-shell.exe').write_bytes(b'x')
     assert headless_shell_present(chrome) is True
+
+
+def test_log_scrubbing_removes_keys_codes_and_signed_urls():
+    from core.logs import scrub
+    text = ('Authorization: Bearer abcdef123456789 sk-ABCDEFGH12345678 api_key="topsecretvalue" '
+            'https://user:pw@host.test/x https://cdn.test/v.mp4?X-Sig=abc123&exp=1 '
+            'MAVO1.aaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbb')
+    out = scrub(text)
+    for secret in ('abcdef123456789', 'ABCDEFGH12345678', 'topsecretvalue', 'user:pw', 'X-Sig=abc123', 'aaaaaaaaaaaa'):
+        assert secret not in out, (secret, out)
+
+
+def test_diagnostics_endpoint_is_open_and_secret_free(tmp_path):
+    app = create_app(Settings(tmp_path / 'd', license_required=True), MemorySecrets(), license_public_key=PUB)
+    app.state.license.machine = MACHINE
+    with TestClient(app) as c:
+        before = c.get('/api/diagnostics')                 # reachable before activation: students need it for support
+        assert before.status_code == 200 and '未激活' in before.json()['text']
+        assert c.get('/api/assets').status_code == 402     # everything else is still gated
+        assert c.post('/api/license', json={'code': token()}).status_code == 200
+        c.post('/api/providers', json={'type': 'llm', 'name': 'x', 'base_url': 'https://api.test/v1', 'model': 'm'})
+        body = c.get('/api/diagnostics').json()
+        assert 'MAVO BOX' in body['text'] and 'api.test' in body['text'] and '已激活' in body['text']
+        assert body['text'].count(chr(10)) > 5 and 'MAVO1.' not in body['text']

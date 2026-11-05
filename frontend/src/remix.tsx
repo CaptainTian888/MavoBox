@@ -1,3 +1,4 @@
+import {QACheck} from './qa';
 import {useEffect, useState} from 'react';
 
 type Asset = {id: string; path: string; type: string; duration: number};
@@ -126,7 +127,7 @@ export function Remix() {
           </div></article>)}<button onClick={() => void run(async () => {const p = await api<Project>(root + '/timeline', 'PUT', timeline); setProject(p); setTimeline(p.timeline); setDirty(false); setNotice('时间线已校验并保存');})}>保存时间线{dirty ? '（有未保存修改）' : ''}</button></fieldset>
         <button disabled={disabled || dirty} onClick={() => void run(async () => {setTask(await api<Task>(root + '/render', 'POST'));})}>渲染成片</button>
       </>}
-      {project.output_asset_id && <article><h3>成片预览</h3><video className="remix-output" controls src={`/api/remix/output/${project.output_asset_id}`}/><p>用于发布：在发布页选择此素材 ID：<code>{project.output_asset_id}</code></p></article>}
+      {project.output_asset_id && <article><h3>成片预览</h3><video className="remix-output" controls src={`/api/remix/output/${project.output_asset_id}`}/><QACheck assetId={project.output_asset_id} targetSeconds={project.target_seconds}/><p>用于发布：在发布页选择此素材 ID：<code>{project.output_asset_id}</code></p></article>}
     </>}
   </section>;
 }

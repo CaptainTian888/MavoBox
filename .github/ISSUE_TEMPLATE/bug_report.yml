@@ -1,0 +1,27 @@
+name: 问题反馈
+description: 软件出错、功能异常时使用
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先在软件里点 **设置 → 复制诊断报告**（或"向导"页、激活页里同样的按钮），把内容粘贴到下面。
+        报告里不含 API Key、授权码和账号信息。**不要**在此处贴授权码或任何密钥。
+  - type: input
+    id: version
+    attributes:
+      label: 软件版本
+      placeholder: 例如 0.1.0（诊断报告第一行有）
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 你做了什么操作、期望什么结果、实际看到什么
+    validations: { required: true }
+  - type: textarea
+    id: report
+    attributes:
+      label: 诊断报告
+      render: text
+    validations: { required: true }

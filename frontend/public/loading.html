@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>MAVO BOX</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; margin: 0; }
+  body { display: grid; place-items: center; background: #0b0f1a; color: #cbd5e1;
+         font: 15px/1.6 system-ui, "Microsoft YaHei", "PingFang SC", sans-serif; }
+  main { text-align: center; padding: 0 24px; }
+  .logo { width: 96px; height: 96px; margin: 0 auto 18px; animation: pulse 1.8s ease-in-out infinite; }
+  h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: .08em; color: #f1f5f9; }
+  p { margin: 4px 0; color: #94a3b8; }
+  .bar { width: 220px; height: 3px; margin: 22px auto 0; background: #1e293b; border-radius: 3px; overflow: hidden; }
+  .bar i { display: block; width: 40%; height: 100%; background: linear-gradient(90deg, #22d3ee, #a855f7); border-radius: 3px; animation: slide 1.3s ease-in-out infinite; }
+  .slow { visibility: hidden; margin-top: 18px; font-size: 13px; }
+  @keyframes slide { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
+  @keyframes pulse { 0%, 100% { opacity: .75; transform: scale(.97); } 50% { opacity: 1; transform: scale(1); } }
+</style>
+</head>
+<body>
+<main>
+  <svg class="logo" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs><linearGradient id="g" x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="0.55" stop-color="#6D7CFF"/><stop offset="1" stop-color="#A855F7"/></linearGradient></defs>
+    <path d="M512 182 L798 347 L798 677 L512 842 L226 677 L226 347 Z" fill="none" stroke="url(#g)" stroke-width="30" stroke-opacity="0.55" stroke-linejoin="round"/>
+    <path d="M226 677 L226 347 L512 512 L798 347 L798 677" fill="none" stroke="url(#g)" stroke-width="64" stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>
+  <h1>MAVO BOX</h1>
+  <p>正在启动，请稍候…</p>
+  <div class="bar"><i></i></div>
+  <p class="slow" id="slow">首次启动或电脑较慢时需要十几秒，请不要关闭窗口。</p>
+</main>
+<script>setTimeout(function () { document.getElementById('slow').style.visibility = 'visible'; }, 8000);</script>
+</body>
+</html>

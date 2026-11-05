@@ -42,9 +42,17 @@ def probe(path):
     audio = any(s['codec_type'] == 'audio' for s in data['streams'])
     if not video and not audio:
         raise ValueError("文件不包含音视频")
+    fps = 0.0
+    if video:
+        try:
+            num, _, den = str(video.get('avg_frame_rate') or '0/1').partition('/')
+            fps = float(num) / float(den or 1) if float(den or 1) else 0.0
+        except (ValueError, ZeroDivisionError):
+            fps = 0.0
     return dict(type='video' if video else 'audio',
         duration=float(data.get('format', {}).get('duration', 0)),
-        width=video.get('width') if video else None, height=video.get('height') if video else None)
+        width=video.get('width') if video else None, height=video.get('height') if video else None,
+        has_audio=audio, fps=fps)
 
 
 def trim(source, target, seconds=5, cancelled=lambda: False):

@@ -1,3 +1,4 @@
+import {QACheck} from './qa';
 import React, {useEffect, useState} from 'react';
 
 type Asset={id:string;path:string;type:string};
@@ -137,7 +138,7 @@ export function Clone(){
         {media.filter(m=>m.kind==='speech'&&m.status==='succeeded').map(m=><p key={m.id}>{m.shot_id} 配音 {m.metadata.estimated?'· 词时间为估算':''}<audio controls src={`/api/clone/media/${m.id}`}/></p>)}
       </article>
       <article><h3>⑥ 成片与变体</h3><button disabled={busy||!p.treatment} onClick={()=>void run(()=>action('assemble'))}>组装词级时间线</button><button disabled={busy||!p.timeline} onClick={()=>void run(()=>action('render'))}>渲染 9:16 成片</button>
-        {p.output_asset_id&&<video controls src={`/api/clone/output/${p.output_asset_id}`}/>}
+        {p.output_asset_id&&<><video controls src={`/api/clone/output/${p.output_asset_id}`}/><QACheck assetId={p.output_asset_id}/></>}
         {!p.parent_id&&<><label>变体维度 JSON（person 使用参考图 asset ID；product / dialogue / style / cta 使用文本候选）<textarea rows={5} value={dimensions} onChange={e=>setDimensions(e.target.value)}/></label>
           <button disabled={busy} onClick={()=>void run(async()=>{await action('variants',{count:brief.variant_count,dimensions:JSON.parse(dimensions)});})}>展开 {brief.variant_count} 个变体</button>
           <p>变体共享解读缓存、并发队列与根项目预算。可逐个编辑，也可一次生成全部变体。</p>

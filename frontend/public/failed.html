@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>MAVO BOX 启动失败</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; margin: 0; }
+  body { display: grid; place-items: center; background: #0b0f1a; color: #cbd5e1;
+         font: 15px/1.7 system-ui, "Microsoft YaHei", "PingFang SC", sans-serif; }
+  main { max-width: 620px; padding: 0 24px; }
+  h1 { margin: 0 0 10px; font-size: 22px; color: #fca5a5; }
+  .msg { padding: 12px 14px; background: #1e1b2e; border-left: 3px solid #f87171; border-radius: 4px; color: #f1f5f9; word-break: break-all; }
+  ol { padding-left: 1.3em; color: #94a3b8; }
+  code { background: #1e293b; padding: 1px 6px; border-radius: 3px; color: #e2e8f0; }
+  button { margin-top: 10px; padding: 8px 16px; border: 0; border-radius: 6px; background: #6d7cff; color: #fff; font: inherit; cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+  <h1>MAVO BOX 没能启动</h1>
+  <div class="msg" id="msg">未知原因</div>
+  <p>可以按下面的顺序试试：</p>
+  <ol>
+    <li>完全退出 MAVO BOX（在任务管理器里结束 <code>mavo-box</code> 和 <code>mavobox-server</code>），再重新打开。</li>
+    <li>如果装了杀毒软件，把 MAVO BOX 的安装目录加入信任名单后重试。</li>
+    <li>重启电脑后再试一次。</li>
+    <li>仍然不行：把日志发给老师。日志在数据目录的 <code>logs</code> 文件夹里的 <code>mavobox.log</code>（Windows 默认是 <code>%LOCALAPPDATA%\TikTolTool\logs</code>）。</li>
+  </ol>
+</main>
+<script>
+  var m = new URLSearchParams(location.search).get('msg');
+  if (m) document.getElementById('msg').textContent = m;
+</script>
+</body>
+</html>

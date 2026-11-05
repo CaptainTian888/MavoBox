@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from api.static import mount_frontend
+from core import diagnostics, logs
 from core import env as envmod
 from core.license import LicenseError, LicenseStore
 from core.license_key import PUBLIC_KEY
@@ -26,6 +27,7 @@ from api.publisher import router as publisher_router
 from api.remix import router as remix_router
 from modules.remix.service import RemixService
 from api.clone import router as clone_router
+from api.qa import qa_router
 from modules.clone.service import CloneService, OPERATIONS
 
 
@@ -131,6 +133,7 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
     async def lifespan(app):
         db = Database(settings.data_dir / 'tiktol.sqlite3')
         app.state.db = db
+        app.state.settings = settings
         app.state.providers = Providers(db, secrets)
         app.state.clone = CloneService(db, secrets, settings, clone_factories)
         app.state.remix = RemixService(db, secrets, settings,
@@ -163,6 +166,7 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
     app.include_router(publisher_router(app))
     app.include_router(remix_router(app))
     app.include_router(clone_router(app))
+    app.include_router(qa_router(app))
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', 'testserver'])
 
     @app.middleware('http')
@@ -187,7 +191,7 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
             license_cache.update(at=now, ok=license_store.status()['licensed'])
         return license_cache['ok']
 
-    open_paths = ('/api/health', '/api/license', '/api/env')
+    open_paths = ('/api/health', '/api/license', '/api/env', '/api/diagnostics')
 
     @app.middleware('http')
     async def license_gate(request: Request, call_next):
@@ -210,6 +214,27 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
         return installer.snapshot()
+
+    @app.get('/api/diagnostics')
+    def get_diagnostics():
+        return diagnostics.build(app.state.db, settings, license_store.status(), installer)
+
+    @app.post('/api/diagnostics/open-logs')
+    def open_logs():
+        directory = logs.log_dir(settings.data_dir)
+        directory.mkdir(parents=True, exist_ok=True)
+        import subprocess
+        import sys
+        try:
+            if sys.platform == 'win32':
+                os.startfile(str(directory))  # opens the user's own log folder
+            elif sys.platform == 'darwin':
+                subprocess.Popen(['open', str(directory)])
+            else:
+                subprocess.Popen(['xdg-open', str(directory)])
+        except Exception:
+            raise HTTPException(500, '无法打开日志文件夹') from None
+        return {'path': str(directory)}
 
     @app.get('/api/license')
     def license_status():
