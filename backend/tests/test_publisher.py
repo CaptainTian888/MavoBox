@@ -309,3 +309,19 @@ def test_per_account_browser_settings_and_migration(tmp_path):
     assert options['locale'] == 'ja-JP'
     assert options['timezone_id'] == 'Asia/Tokyo'
     assert options['viewport'] == {'width': 1440, 'height': 900}
+
+
+def test_sleep_gap_marks_stale_jobs_missed_but_not_held_ones(setup):
+    service, clock, _, _ = setup
+    with Scheduler(service, FakeDriver(), now=lambda: clock[0]) as scheduler:
+        scheduler.tick()
+        clock[0] += timedelta(hours=4)  # machine slept; the job below became due during the gap
+        stale = service.create_jobs(dict(account_ids=[setup[2]['id']], video_path=str(setup[3]),
+            scheduled_at=clock[0] - timedelta(hours=3), caption='x'))[0]
+        scheduler.tick(); wait(scheduler)
+        assert service.job(stale['id'])['status'] == 'missed'
+        # Normal polling cadence: a due job still runs.
+        fresh = create(setup)
+        clock[0] += timedelta(seconds=15)
+        scheduler.tick(); wait(scheduler)
+        assert service.job(fresh['id'])['status'] == 'succeeded'

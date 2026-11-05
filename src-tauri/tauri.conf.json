@@ -10,6 +10,9 @@
   },
   "bundle": {
     "active": true,
+    "publisher": "SHINEVISTA GLOBAL GROUP LIMITED(HK)",
+    "copyright": "Copyright © 2026 SHINEVISTA GLOBAL GROUP LIMITED(HK). All rights reserved.",
+    "shortDescription": "TikTol local video toolkit",
     "targets": ["nsis"],
     "icon": ["icons/icon.ico"],
     "resources": { "../backend/dist/tiktol-server/": "tiktol-server/" }

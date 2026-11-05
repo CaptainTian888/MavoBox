@@ -29,6 +29,21 @@ def main(argv=None):
     parser.add_argument('--port', type=int, default=int(os.environ.get('TIKTOL_PORT', '8000')))
     parser.add_argument('--no-browser', action='store_true')
     args = parser.parse_args(argv)
+
+    from core.config import Settings
+    from core.instance import InstanceLock
+    lock = InstanceLock(Settings().data_dir)
+    if not lock.acquire():
+        # Another backend owns this data directory: point at it instead of starting a second one.
+        url = lock.running_url()
+        if not url:
+            print('TIKTOL_ERROR 另一个实例正在启动或运行，但无法读取其地址', flush=True)
+            return 3
+        print(f'TIKTOL_READY {url}', flush=True)
+        if not args.no_browser:
+            webbrowser.open(url)
+        return 0
+
     port = pick_port(args.port)
     os.environ['TIKTOL_PORT'] = str(port)
 
@@ -37,11 +52,16 @@ def main(argv=None):
 
     app = create_app()
     url = f'http://127.0.0.1:{port}'
+    lock.publish(url)
     print(f'TIKTOL_READY {url}', flush=True)
     if not args.no_browser:
         threading.Thread(target=lambda: (time.sleep(1.5), webbrowser.open(url)), daemon=True).start()
-    uvicorn.run(app, host='127.0.0.1', port=port, log_level='warning')
+    try:
+        uvicorn.run(app, host='127.0.0.1', port=port, log_level='warning')
+    finally:
+        lock.release()
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

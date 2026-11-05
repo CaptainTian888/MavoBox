@@ -331,5 +331,9 @@ npm.cmd run build
 - `scripts\build.cmd`：构建前端并用 PyInstaller 打成 `backend\dist\tiktol-server\tiktol-server.exe`（onedir，内置前端）。双击运行会自动选端口（默认 8000，被占用则换空闲端口）并打开系统浏览器；`--no-browser` 不开浏览器，`--port N` 指定端口。数据仍在 `%LOCALAPPDATA%\TikTolTool`。
 - 已实测：exe 能启动、`/api/health`、前端页面与 SPA 回退、`/api/*` 404、跨源请求被拒（403）、系统凭据（keyring）读写均正常。
 - 首次使用发布功能前需安装 Playwright 浏览器：`playwright install chromium`（打包版不内置浏览器，约 150MB+）。ffmpeg 需在 PATH 或设置 `FFMPEG_PATH`。
-- `src-tauri/`：Tauri 2 外壳脚手架（启动 sidecar 后端 → 等 `TIKTOL_READY` → 打开窗口 → 退出时结束后端）。**尚未编译验证**：本机未安装 Rust。装好 Rust 与 `cargo install tauri-cli --version "^2"` 后，在项目根运行 `cargo tauri build` 生成 NSIS 安装包。图标目前是占位图。
+- `src-tauri/`：Tauri 2 外壳。启动打包好的后端 → 等 `TIKTOL_READY`（60 秒超时）→ 打开窗口 → 退出时结束后端；Windows 下后端放进 kill-on-close 作业对象，外壳被强杀时后端及其 Chromium 子进程也会一起结束。已实测：外壳启动后端并通过健康检查，杀掉外壳后后端随之退出。
+- 生成安装包：先 `scripts\build.cmd`，再在**普通用户终端**运行 `powershell -ExecutionPolicy Bypass -File scripts\tauri-build.ps1`，产物在 `src-tauri\target\release\bundle\nsis\TikTol_0.1.0_x64-setup.exe`（约 96MB）。需要 Rust、VS Build Tools(C++)、Node。注意：从 Claude 桌面应用内的沙箱进程运行会因 AppData 路径虚拟化报 `os error 17`，请在普通终端运行。
+- 发布者与版权在 `src-tauri/tauri.conf.json` 的 `bundle.publisher / copyright`。安装包**未做代码签名**，Windows SmartScreen 会提示"未知发布者"；要显示公司名需购买代码签名证书。
+- 同一数据目录只允许一个后端实例（`core/instance.py`）；再次启动会直接指向已运行的实例。
+- 开发模式（Vite 5173）需设置环境变量 `TIKTOL_DEV=1`，否则后端会拒绝其来源（`scripts\dev.cmd` 已设置）。
 - 后端也可单独跑：`TIKTOL_SERVE_UI=0` 关闭静态页托管（开发时仍用 Vite）。

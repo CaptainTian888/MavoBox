@@ -154,9 +154,10 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
     async def local_origin(request: Request, call_next):
         origin = request.headers.get('origin')
         port = os.environ.get('TIKTOL_PORT', '8000')
-        if origin and origin not in ('http://127.0.0.1:5173', 'http://localhost:5173',
-                                      f'http://127.0.0.1:{port}', f'http://localhost:{port}',
-                                      'http://127.0.0.1:8000', 'http://localhost:8000'):
+        allowed = {f'http://127.0.0.1:{port}', f'http://localhost:{port}'}
+        if os.environ.get('TIKTOL_DEV') == '1':  # Vite dev server only when explicitly in dev mode
+            allowed |= {'http://127.0.0.1:5173', 'http://localhost:5173'}
+        if origin and origin not in allowed:
             return JSONResponse(status_code=403, content={'detail': '不允许的来源'})
         return await call_next(request)
 

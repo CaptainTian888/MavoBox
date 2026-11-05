@@ -175,6 +175,7 @@ class Generator:
                     (media_id,p['id'],op['shot_id'],op['kind'],op['provider']['id'],json.dumps(op['params'],ensure_ascii=False),
                      0 if replacement or fallback else op['cost_estimate'],attempt,op['cache_key'],now()))
             metadata = {}
+            client = None
             try:
                 if cancelled(): raise Cancelled()
                 client = None if replacement or fallback else self.s.adapter(p, {'anchor':'image_gen','video':'video_gen','speech':'tts'}[op['kind']],cancelled)
@@ -245,7 +246,13 @@ class Generator:
             except BaseException as exc:
                 # A persisted job can safely resume; an uncertain POST requires explicit regeneration.
                 if isinstance(exc,(Auth,Fatal,ContentPolicy)):
-                    db.execute("UPDATE generated_media SET status='failed' WHERE id=?",(media_id,))
+                    row = db.one('SELECT job,status FROM generated_media WHERE id=?',(media_id,))
+                    # A POST was accepted (2xx) but its result was unusable and no job id was saved:
+                    # the provider may have billed us. Keep 'unknown' so a rerun needs explicit regeneration.
+                    uncertain = (isinstance(exc,Fatal) and client is not None and getattr(client,'accepted',False)
+                                 and row and not row['job'] and row['status']=='unknown')
+                    if uncertain: exc = Transient('提交已被接受但结果无法解析')
+                    else: db.execute("UPDATE generated_media SET status='failed' WHERE id=?",(media_id,))
                 else:
                     db.execute("UPDATE generated_media SET status=CASE WHEN job IS NOT NULL THEN 'submitted' WHEN status='pending' THEN 'failed' ELSE status END WHERE id=?",(media_id,))
                 messages={Auth:'认证失败，请检查系统凭据',RateLimit:'供应商限流',Transient:'请求暂时失败或提交结果未知，请先核查账单',

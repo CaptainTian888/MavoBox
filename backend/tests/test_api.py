@@ -46,3 +46,14 @@ def test_register_real_video(client, video):
     assert asset['width'] == 160 and asset['height'] == 120
     assert 1.8 <= asset['duration'] <= 2.2
     assert client.get('/api/assets').json()[0]['id'] == asset['id']
+
+
+def test_origin_allowlist_follows_port_and_dev_flag(client, monkeypatch):
+    monkeypatch.setenv('TIKTOL_PORT', '8123')
+    monkeypatch.delenv('TIKTOL_DEV', raising=False)
+    ok = lambda o: client.get('/api/health', headers={'Origin': o}).status_code
+    assert ok('http://127.0.0.1:8123') == 200
+    assert ok('http://127.0.0.1:8000') == 403      # another local app on a default port
+    assert ok('http://127.0.0.1:5173') == 403      # dev server not trusted unless TIKTOL_DEV=1
+    monkeypatch.setenv('TIKTOL_DEV', '1')
+    assert ok('http://127.0.0.1:5173') == 200

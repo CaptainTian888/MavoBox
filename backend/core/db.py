@@ -112,6 +112,10 @@ class Database:
         with self.connect() as con:
             con.execute(sql, params)
 
+    def execute_rowcount(self, sql, params=()):
+        with self.connect() as con:
+            return con.execute(sql, params).rowcount
+
     def all(self, sql, params=()):
         with self.connect() as con:
             return [dict(row) for row in con.execute(sql, params)]

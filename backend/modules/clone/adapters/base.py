@@ -34,6 +34,7 @@ class Client:
         self.provider, self._key = provider, key
         self.extra = provider.get('extra', {})
         self.transport, self.client, self.cancelled, self.retries = transport, client, cancelled, retries
+        self.accepted = False  # True once any POST got a 2xx: a paid request may have been accepted
         self.base = provider['base_url'].rstrip('/')
 
     def check(self):
@@ -78,6 +79,7 @@ class Client:
                         raise ContentPolicy('Provider 内容策略拒绝请求')
                 if status == 422: raise ContentPolicy('Provider 拒绝内容或参数，请检查策略及模型约束')
                 if not 200 <= status < 300: raise Fatal('Provider 请求失败，请检查配置')
+                if method == 'POST': self.accepted = True
                 return response
             except (httpx.TimeoutException, httpx.TransportError):
                 error = Transient('Provider 连接失败或超时；提交结果可能未知，请核查账单')

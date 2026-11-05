@@ -20,6 +20,7 @@ class Scheduler:
         self.active = {}  # job/login token -> (account id, proxy id)
         self.executor = ThreadPoolExecutor(max_workers=self.settings.publish_concurrency)
         self.thread = None
+        self.last_tick = None
         self.recover()
 
     @property
@@ -44,6 +45,20 @@ class Scheduler:
                 (state, MESSAGES[code], stamp, stamp, row['id']))
             self.service.log(row['id'], code, 'warning')
 
+    def expire_missed(self, current, since):
+        """Mark scheduled jobs that are past the grace window as missed (used after a pause/sleep)."""
+        stamp = current.isoformat()
+        for row in self.db.all("SELECT * FROM publish_jobs WHERE status='scheduled'"):
+            due = self.due(row)
+            # Only jobs that became due during the pause never had a chance to run on time;
+            # jobs held back by interval/busy rules were already due before it.
+            if due > since and (current - due).total_seconds() > self.settings.publish_missed_grace_seconds:
+                changed = self.db.execute_rowcount(
+                    "UPDATE publish_jobs SET status='missed',error=?,updated_at=?,finished_at=? WHERE id=? AND status='scheduled'",
+                    (MESSAGES['missed'], stamp, stamp, row['id']))
+                if changed:
+                    self.service.log(row['id'], 'missed', 'warning')
+
     def available(self, account):
         return (len(self.active) < self.settings.publish_concurrency
                 and all(a != account['id'] and (not account['proxy_id'] or p != account['proxy_id'])
@@ -59,6 +74,11 @@ class Scheduler:
             if self.stopping.is_set():
                 return
             current = utc(self.now())
+            # A long gap between ticks means the machine slept or the process was paused: do not
+            # publish stale jobs late, apply the same missed-grace rule that startup recovery uses.
+            if self.last_tick and (current - self.last_tick).total_seconds() > max(self.settings.publish_poll_seconds * 4, 120):
+                self.expire_missed(current, self.last_tick)
+            self.last_tick = current
             rows = self.db.all("SELECT * FROM publish_jobs WHERE status='scheduled' ORDER BY scheduled_at,created_at,id")
             for row in rows:
                 if self.due(row) > current:

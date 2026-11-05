@@ -299,3 +299,32 @@ def test_real_ffmpeg_word_caption_render(video,tmp_path):
     pixels=zip(raw[0::3],raw[1::3],raw[2::3])
     # Karaoke primary color is yellow; assert visible pixels in caption region, not only file existence.
     assert any(r>170 and g>170 and b<100 for i,(r,g,b) in enumerate(pixels) if i//160>180)
+
+
+def test_accepted_post_with_unusable_body_stays_unknown_not_failed(service):
+    """2xx but unparseable body: provider may have billed us, so a rerun must not silently resubmit."""
+    from modules.clone.adapters.base import Fatal
+    s,id,_=service
+    requests=[]
+    class BadBody:
+        def __init__(self,*a,**kw): self.accepted=False
+        def submit(self,*a):
+            requests.append('submit'); self.accepted=True
+            raise Fatal('Provider 返回无效或含敏感信息的数据')
+    s.factories['video_gen']=BadBody
+    p=s.get(id)
+    with pytest.raises(Fatal): s.generator.run(p,lambda _:None,lambda:False,only_shot='s1')
+    assert s.media(id)[-1]['status']=='unknown'
+    with pytest.raises(ValueError,match='未知'): s.generator.run(p,lambda _:None,lambda:False,only_shot='s1')
+    assert requests==['submit']
+
+
+def test_rejected_post_is_plain_failure_and_may_retry(service):
+    from modules.clone.adapters.base import Fatal
+    s,id,_=service
+    class Rejects:
+        def __init__(self,*a,**kw): self.accepted=False
+        def submit(self,*a): raise Fatal('Provider 请求失败，请检查配置')
+    s.factories['video_gen']=Rejects
+    with pytest.raises(Fatal): s.generator.run(s.get(id),lambda _:None,lambda:False,only_shot='s1')
+    assert s.media(id)[-1]['status']=='failed'
