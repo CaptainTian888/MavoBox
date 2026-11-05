@@ -1,0 +1,11 @@
+:root{font-family:system-ui,"Microsoft YaHei",sans-serif;color:#192a3c;background:#f2f5f8;font-synthesis:none}body{margin:0}main{max-width:1000px;margin:36px auto;padding:0 24px}h1{margin-bottom:8px}small{font-size:14px;font-weight:400;color:#536679}nav{display:flex;gap:8px;margin:24px 0}button{border:1px solid #bac8d6;background:white;color:#193f61;border-radius:6px;padding:9px 16px;cursor:pointer;margin-right:8px}button[aria-current],button[type=submit]{background:#193f61;color:white}button:disabled{opacity:.5;cursor:wait}section{background:white;padding:24px;border-radius:12px}form{display:flex;gap:12px;align-items:end;flex-wrap:wrap}label{display:flex;flex-direction:column;gap:6px;flex:1;min-width:180px;font-size:14px}input,select{font:inherit;padding:10px;border:1px solid #bac8d6;border-radius:6px;min-width:0}article{padding:16px 0;border-bottom:1px solid #e0e7ee;overflow-wrap:anywhere}progress{display:inline-block;margin:0 12px;max-width:35%}.error{background:#ffe8e7;color:#992d28;padding:12px;border-radius:6px}.table{overflow:auto;margin-top:24px}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;padding:12px;border-bottom:1px solid #e0e7ee}td:first-child{overflow-wrap:anywhere;min-width:220px}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #60a5fa;outline-offset:2px}
+textarea { font: inherit; padding: .6rem; min-height: 6rem; resize: vertical; }
+fieldset { border: 1px solid #ccc; padding: 1rem; }
+label.check { display: flex; flex-direction: row; align-items: center; gap: .5rem; }
+label.check input { width: auto; }
+.badge { display: inline-block; padding: .15rem .5rem; border-radius: .4rem; background: #eee; color: #333; }
+.badge.logged_in, .badge.succeeded { background: #d6f4dc; }
+.badge.needs_attention, .badge.login_required, .badge.missed { background: #fff0bb; }
+.badge.failed, .badge.banned_suspected { background: #ffd9d9; }
+.filters { display: flex; flex-wrap: wrap; gap: 1rem; }
+aside { border: 2px solid #777; padding: 1rem; overflow-wrap: anywhere; }
