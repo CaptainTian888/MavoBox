@@ -14,6 +14,20 @@ class Database:
         with self.connect() as con:
             con.executescript('''
                 PRAGMA journal_mode=WAL;
+                CREATE TABLE IF NOT EXISTS shots (
+                    id TEXT PRIMARY KEY, asset_id TEXT NOT NULL, start REAL NOT NULL, end REAL NOT NULL,
+                    frame_path TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '[]',
+                    shot_type TEXT NOT NULL DEFAULT '', has_person INTEGER NOT NULL DEFAULT 0,
+                    quality REAL NOT NULL DEFAULT 0, tagged INTEGER NOT NULL DEFAULT 0,
+                    suggested_use TEXT NOT NULL DEFAULT '', tagging_hash TEXT NOT NULL DEFAULT '', params_hash TEXT NOT NULL,
+                    UNIQUE(asset_id, params_hash, start, end));
+                CREATE TABLE IF NOT EXISTS remix_projects (
+                    id TEXT PRIMARY KEY, name TEXT NOT NULL, brief_text TEXT NOT NULL,
+                    target_seconds REAL NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL,
+                    settings TEXT NOT NULL, timeline TEXT, status TEXT NOT NULL DEFAULT 'draft',
+                    output_asset_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS remix_project_assets (
+                    project_id TEXT NOT NULL, asset_id TEXT NOT NULL, PRIMARY KEY(project_id,asset_id));
                 CREATE TABLE IF NOT EXISTS account_groups (
                     id TEXT PRIMARY KEY, name TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS proxies (

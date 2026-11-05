@@ -10,8 +10,9 @@ class Cancelled(Exception):
 
 
 class TaskQueue:
-    def __init__(self, db, handlers, concurrency=2, retries=1):
+    def __init__(self, db, handlers, concurrency=2, retries=1, on_finished=None):
         self.db, self.handlers, self.retries = db, handlers, retries
+        self.on_finished = on_finished
         self.lock = RLock()
         self.stopping = Event()
         self.events = {}
@@ -29,18 +30,25 @@ class TaskQueue:
     def list(self):
         return [self.get(r['id']) for r in self.db.all("SELECT id FROM tasks ORDER BY created_at DESC")]
 
-    def create(self, kind, payload):
+    def create(self, kind, payload, max_retries=None):
         with self.lock:
             task_id = uuid4().hex
             self.db.execute("INSERT INTO tasks (id,kind,payload,status,max_retries,created_at) VALUES (?,?,?,'pending',?,?)",
-                            (task_id, kind, json.dumps(payload), self.retries, now()))
+                            (task_id, kind, json.dumps(payload), self.retries if max_retries is None else max_retries, now()))
             self._submit(task_id)
             return self.get(task_id)
 
     def _submit(self, task_id):
         event = Event()
         self.events[task_id] = event
-        self.executor.submit(self._run, task_id, event)
+        self.executor.submit(self._run_finished, task_id, event)
+
+    def _run_finished(self, task_id, event):
+        try:
+            self._run(task_id, event)
+        finally:
+            if self.on_finished:
+                self.on_finished(self.db.one('SELECT * FROM tasks WHERE id=?', (task_id,)))
 
     def _run(self, task_id, event):
         def cancelled():

@@ -1,6 +1,6 @@
-# TikTol M1
+# TikTol M2
 
-FastAPI + SQLite 后端和 React / TypeScript / Vite 前端，仅用于本机。保留 M0 下载截取、素材注册、任务队列和 Provider 配置，新增 M1 多账号、代理、Playwright 发布及本地持久化调度。PLAN.md 保持原样；Tauri、混剪和视频生成调用留到后续。
+FastAPI + SQLite 后端和 React / TypeScript / Vite 前端，仅用于本机。保留 M0 下载和 M1 多账号发布，新增 M2 智能混剪：镜头切分、关键帧理解、LLM 时间线、手动编辑及 ffmpeg 竖屏渲染。PLAN.md 保持原样；Tauri、M3 钩子复刻和视频生成调用留到后续。
 
 ## 安装（宿主机联网执行）
 
@@ -15,7 +15,7 @@ cd ..\frontend
 npm.cmd i
 ```
 
-依赖分别保存在 `backend/.venv` 与 `frontend/node_modules`。M1 固定 `playwright==1.56.0`；现有 uv.lock 尚未联网更新，宿主运行 `uv sync` 更新并保留锁文件。不需要重新安装前端依赖。
+依赖分别保存在 `backend/.venv` 与 `frontend/node_modules`。M1 固定 `playwright==1.56.0`；M2 新增 `scenedetect`、`opencv-python-headless`，`httpx` 移入运行依赖。现有 uv.lock 尚未联网更新，宿主运行 `uv sync` 更新并保留锁文件。不需要重新安装前端依赖。
 
 ## 启动
 
@@ -142,3 +142,51 @@ npm.cmd run build
 `npm run build` 的 TypeScript 检查已通过，Vite 因沙箱禁止启动 esbuild 子进程（spawn EPERM）未完成，**不声称生产构建通过**。未联网安装依赖，未更新 uv.lock，未调用真实 TikTok。**真实 TikTok 页面选择器、代理连通性、Cookie/Profile 登录保持和实际发布均无法在沙箱中验证**；宿主应先用测试号、仅自己可见验证单条任务。选择器统一在 `modules/publisher/selectors.py`，参考了两个 MIT 项目的 Studio 上传、权限和确认流程，未整段复制实现。
 
 若成功确认页面没有明确的新视频链接，`result_url` 留空，不根据账号最新视频猜测链接。封面使用 TikTok 默认值，服务器端日历不参与调度；其参考选择器已集中保留。账号页可分别覆盖 browser_locale、browser_timezone、browser_width、browser_height，留空继承 Settings 默认值；已有数据库以增量字段迁移兼容。独立审查由宿主 Claude 执行，本轮 GPT 只完成实现与离线验证。
+
+## M2 智能混剪
+
+1. 在「设置」配置 `llm` Provider（OpenAI 兼容 Base URL，例如以 `/v1` 结尾；程序追加 `/chat/completions`）、模型和 Key。分析需要支持 `image_url` 多模态输入的模型。
+2. 打开「混剪」，从素材库多选，或登记本地视频绝对路径、扫描文件夹。支持 mp4/mov/mkv/webm/avi；扫描不跟随目录符号链接或 Windows junction，不登记符号链接文件，拒绝相对路径和 `..` 跳转。源文件不复制、不修改。
+3. 填要求、目标时长、画幅（默认 1080×1920）、可选 BGM 本地路径、字幕、转场和画面填充方式，保存项目。修改并保存项目设置会清除已有时间线和成片关联；历史输出文件仍在素材库。
+4. 查看预计发送图片数，再「分析素材」。取消勾选“发送关键帧给模型”可只切镜头。未分析时按固定分段估算图片数；切分后按未理解镜头精确计数，实际模型切点可能令估计增加。默认每批 6 张，单批最多尝试 3 次，因此失败重试也可能产生用量。
+5. 「生成时间线」后可编辑片段起止、顺序、速度、转场、字幕、静音，保存时严格校验。时间线时长容差为目标 ±5%，最少 ±0.5 秒；交叉/滑动转场的重叠会扣除。`src_start/src_end` 是素材绝对秒数，字幕 offset 是变速后片段内秒数。字幕是模型生成的文案，未实现语音识别或逐字音频对齐。
+6. 「渲染成片」显示队列进度，可取消；完成后用 `<video>` 预览。发布页可选择新素材，混剪页会显示其 asset ID。
+
+数据目录新增 `frames/*.jpg`；SQLite 增量创建 `shots`、`remix_projects`、`remix_project_assets`，不改已有表记录。镜头按 asset ID + 切镜参数缓存，共享项目复用；关键帧缺失会按原 ID 补抽。打标缓存记录 Provider ID/Base URL/model 的指纹，配置变化后需重新分析，不包含 Key；同一个镜头仅保留最后一次 Provider 的理解结果。素材 ID 视为不可变输入，替换原文件后应重新登记成新素材。
+
+模型失败：单批打标尝试 3 次仍失败则为空描述、`tagged=false`，下次分析可重试；编排最多请求 3 次，校验失败会返回具体校验原因给模型修正，最终使用质量排序、均匀取段的规则回退并标 `fallback=true`。规则回退采用硬切和空字幕，不伪造镜头理解；素材不足且不允许重复时明确失败。队列不会自动重复整个混剪任务，避免扩大模型费用；可手动重试失败任务。同步 HTTP 请求最长 90 秒，取消模型调用要等本次请求返回/超时；渲染子进程约每 0.1 秒检测取消。SceneDetect 的单次检测同样需等函数返回后响应取消。
+
+渲染逐片段统一尺寸、fps、yuv420p、48kHz 双声道，再 concat/xfade/acrossfade；支持 crop/模糊背景、fade/crossfade/slide、变速、原声静音和循环 BGM 混音。BGM 时原声系数 0.6，BGM 系数默认 0.2，没有自动音量包络检测。输出 libx264 + AAC + faststart MP4，登记为新 asset。字体优先使用时间线 `global_caption_style.font`，其次项目 `font_path`，再次存在时使用 `C:\Windows\Fonts\msyh.ttc`，否则使用 ffmpeg 默认字体；字体需支持字幕中的字符。字幕文本通过临时 UTF-8 文件加 `expansion=none` 传入，字体复制为内部固定文件名，避免文本/路径进入 filtergraph 语法。所有命令都用参数数组，不使用 shell。
+
+M2 API（JSON，沿用本机来源限制）：
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| POST | `/api/assets/scan` | `{folder,recursive}` 扫描；返回 assets 和 skipped |
+| GET / POST | `/api/remix/projects` | 项目列表 / 创建 |
+| GET / PUT / DELETE | `/api/remix/projects/{id}` | 读取 / 全量更新 / 删除项目（保留媒体） |
+| GET | `/api/remix/projects/{id}/estimate` | images、approximate、中文用量说明 |
+| POST | `/api/remix/projects/{id}/analyze` | `{tag:true}` 分析队列任务，`false` 仅切镜头 |
+| GET | `/api/remix/projects/{id}/shots` | 镜头及 frame_url |
+| POST | `/api/remix/projects/{id}/plan` | 生成时间线队列任务 |
+| PUT | `/api/remix/projects/{id}/timeline` | 请求体直接传完整时间线，校验保存 |
+| POST | `/api/remix/projects/{id}/render` | 渲染队列任务 |
+| GET | `/api/remix/projects/{id}/preview-frames` | 每个 clip 的镜头关键帧 URL（镜头中间帧） |
+| GET | `/api/remix/frames/{name}` | 仅服务 frames 下已登记 JPEG |
+| GET | `/api/remix/output/{asset_id}` | 仅服务项目关联且位于 media 下的 MP4，支持范围请求 |
+
+创建/更新示例：`{name,brief_text,target_seconds,width,height,asset_ids:[...],settings:{provider_id,bgm_path,captions,transition,threshold,segment_seconds,allow_repeat,fit,font_path}}`；可选字段按默认值填充。队列接口沿用 `/api/tasks/{id}`、`/cancel`、`/retry`；同一项目只允许一个活动任务，运行中不可改设置、时间线或删除。
+
+M2 离线验证：现场生成明显切点视频、均分回退、关键帧生成/恢复/缓存，mock LLM 的 JSON 围栏/坏 JSON/重试/降级、非法时间线和重复检测，API 扫描→分析→编排→保存→真实渲染→成片读取，三片段带交叉/滑动转场、特殊字符字幕、BGM，以及 blur、原声、变速和执行中取消。测试不会调用真实 Provider。
+
+本轮完整测试尝试结果为 **51 passed、2 skipped、1 failed**：既有 Playwright 本地 HTML 测试在启动驱动前被沙箱管道权限拒绝（WinError 5）；SceneDetect 尚未安装、Windows 符号链接权限不足的两个测试跳过。最后一次排除该已确认受阻用例的运行结果为 **51 passed、2 skipped、1 deselected**。pytest 仍需使用 M1 所述的仅测试进程临时目录兼容方式；未修改原测试或系统权限来掩盖失败。TypeScript 检查通过，Vite `spawn EPERM`，完整 build 未通过。常见明文 Key / 私钥格式的源文件扫描无匹配；此模式扫描不等于能识别任意格式的秘密。宿主需执行：
+
+```powershell
+cd D:\下载\tiktol\backend
+uv sync
+uv run pytest -q
+cd ..\frontend
+npm.cmd run build
+```
+
+**未验证**：真实 LLM 多模态调用、各 Provider JSON/图片格式兼容性、真实素材规模下的模型成本与吞吐、浏览器页面交互和中文字体视觉效果。未联网、未安装依赖、未更新 uv.lock、未执行 Git 操作。独立审查留给宿主 Claude，本轮由 GPT 实现与离线测试。

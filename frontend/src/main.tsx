@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
 import {Publisher} from './publisher';
+import {Remix} from './remix';
 
 type Task = {id: string; status: string; progress: number; error: string | null; attempts: number};
 type Asset = {id: string; path: string; type: string; duration: number; width: number | null; height: number | null};
@@ -57,10 +58,11 @@ function App() {
     setForm(empty); setEditing(null); setNotice('配置已保存');
   }
   return <main>
-    <header><h1>TikTol <small>本地视频工具 · M1</small></h1><p>下载片段、管理素材与多账号定时发布</p></header>
-    <nav>{['下载', '素材库', '账号', '发布', '设置'].map(p => <button key={p} aria-current={page === p ? 'page' : undefined} onClick={() => {setPage(p); setKey('');}}>{p}</button>)}</nav>
+    <header><h1>TikTol <small>本地视频工具 · M2</small></h1><p>下载片段、智能混剪与多账号定时发布</p></header>
+    <nav>{['下载', '素材库', '混剪', '账号', '发布', '设置'].map(p => <button key={p} aria-current={page === p ? 'page' : undefined} onClick={() => {setPage(p); setKey('');}}>{p}</button>)}</nav>
     {error && <p role="alert" className="error">{error}</p>}{notice && <p role="status">{notice}</p>}
     {(page === '账号' || page === '发布') && <Publisher page={page}/>}
+    {page === '混剪' && <Remix/>}
     {page === '下载' && <section><h2>下载前 N 秒</h2>
       <form onSubmit={e => {e.preventDefault(); void run(async () => {await api('/downloads', 'POST', {url, seconds}); setUrl('');});}}>
         <label>TikTok 链接<input required type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.tiktok.com/@…/video/…"/></label>
@@ -84,7 +86,7 @@ function App() {
         {(['name', 'base_url', 'model'] as const).map(field => <label key={field}>{({name: '名称', base_url: 'Base URL', model: '模型'})[field]}<input required type={field === 'base_url' ? 'url' : 'text'} value={form[field]} onChange={e => setForm({...form, [field]: e.target.value})}/></label>)}
         <label>API Key（留空保留原值）<input type="password" autoComplete="new-password" value={key} onChange={e => setKey(e.target.value)}/></label>
         <button disabled={busy}>保存</button><button type="button" onClick={() => {setEditing(null); setForm(empty); setKey('');}}>清空表单</button>
-      </form><p>Key 保存至系统凭据管理器，保存后不回显。M0 仅存配置，不调用模型。</p>
+      </form><p>Key 保存至系统凭据管理器，保存后不回显。混剪分析和编排会调用选定的 LLM。</p>
       {providers.map(p => <article key={p.id}><strong>{p.name}</strong> · {p.type} · {p.model}<p>{p.base_url} · Key {p.key_status}</p>
         <button disabled={busy} onClick={() => {setEditing(p.id); setForm({type: p.type, name: p.name, base_url: p.base_url, model: p.model}); setKey('');}}>编辑</button>
         <button disabled={busy} onClick={() => void run(async () => {await api(`/providers/${p.id}`, 'DELETE'); if (editing === p.id) {setEditing(null); setForm(empty); setKey('');}})}>删除</button>

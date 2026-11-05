@@ -18,6 +18,8 @@ from modules.publisher.service import PublisherService
 from modules.publisher.scheduler import Scheduler
 from modules.publisher.playwright_driver import PlaywrightDriver
 from api.publisher import router as publisher_router
+from api.remix import router as remix_router
+from modules.remix.service import RemixService
 
 
 class Input(BaseModel):
@@ -66,7 +68,7 @@ class SecretInput(Input):
     key: SecretStr
 
 
-def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now=None):
+def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now=None, remix_client_factory=None):
     settings = settings or Settings()
     secrets = secrets or KeyringSecrets()
 
@@ -75,6 +77,8 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
         db = Database(settings.data_dir / 'tiktol.sqlite3')
         app.state.db = db
         app.state.providers = Providers(db, secrets)
+        app.state.remix = RemixService(db, secrets, settings,
+            **({'client_factory': remix_client_factory} if remix_client_factory else {}))
         app.state.publisher = PublisherService(db, secrets, settings, now=publisher_now)
         app.state.scheduler = Scheduler(app.state.publisher,
             publisher_driver or PlaywrightDriver(app.state.publisher), now=publisher_now)
@@ -84,8 +88,9 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
                 app.state.scheduler.account_operation(payload['account_id'], 'open_login')
 
         app.state.queue = TaskQueue(db, {'download': Downloader(db, settings.data_dir),
+                                      **{'remix_' + op: app.state.remix.handler(op) for op in ('analyze', 'plan', 'render')},
                                       'account_login': login_handler},
-                                    settings.concurrency, settings.retries)
+                                    settings.concurrency, settings.retries, on_finished=app.state.remix.task_finished)
         app.state.scheduler.start()
         try:
             yield
@@ -93,8 +98,9 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
             app.state.queue.close()
             app.state.scheduler.close()
 
-    app = FastAPI(title='TikTol M1', lifespan=lifespan)
+    app = FastAPI(title='TikTol M2', lifespan=lifespan)
     app.include_router(publisher_router(app))
+    app.include_router(remix_router(app))
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', 'testserver'])
 
     @app.middleware('http')
@@ -142,9 +148,13 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
 
     @app.post('/api/tasks/{task_id}/{action}')
     def task_action(task_id: str, action: Literal['cancel', 'retry']):
-        require_task(task_id)
+        row = require_task(task_id)
         try:
+            if action == 'retry' and row['kind'].startswith('remix_'):
+                return app.state.remix.retry_task(app.state.queue, task_id)
             return getattr(app.state.queue, action)(task_id)
+        except LookupError:
+            raise HTTPException(404, '混剪项目不存在') from None
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from None
 
