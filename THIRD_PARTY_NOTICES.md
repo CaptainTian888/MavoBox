@@ -22,6 +22,8 @@ the notes below are a summary, not a substitute for the licence texts shipped by
 and the build recipes at https://www.gyan.dev/ffmpeg/builds/. Keep this entry updated whenever the bundled build changes.
 macOS builds must record their own ffmpeg vendor/version here.
 
+GPT-Load (https://github.com/tbphp/gpt-load, MIT) is documented as an optional, separately installed local gateway; it is not bundled or redistributed by MAVO BOX.
+
 Quality-check and diagnostics ideas (verify what was produced; loudness targets; a copyable support report) were inspired by the public
 OpenFilm project (MIT, https://github.com/openfilm/openfilm). No OpenFilm code is included.
 

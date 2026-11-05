@@ -10,6 +10,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from api.static import mount_frontend
 from core import diagnostics, logs
+from modules import gateway
 from core import env as envmod
 from core.license import LicenseError, LicenseStore
 from core.license_key import PUBLIC_KEY
@@ -342,6 +343,19 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
     @app.delete('/api/providers', status_code=204)
     def delete_provider_query(id: str):
         delete_provider(id)
+
+    @app.post('/api/providers/{provider_id}/models')
+    def provider_models(provider_id: str):
+        """Read-only GET {base_url}/models with the stored key: tests the connection and lists models."""
+        require_provider(provider_id)
+        row = app.state.db.one('SELECT base_url, api_style FROM providers WHERE id=?', (provider_id,))
+        if row['api_style'] != 'openai_compat':
+            raise HTTPException(422, '只有 OpenAI 兼容类型的服务支持获取模型列表')
+        try:
+            ids = gateway.list_models(row['base_url'], secrets.get(provider_id) or '')
+        except gateway.GatewayError as exc:
+            raise HTTPException(422, str(exc)) from None
+        return {'models': ids, 'count': len(ids)}
 
     @app.put('/api/secrets/{provider_id}')
     def set_secret(provider_id: str, data: SecretInput):

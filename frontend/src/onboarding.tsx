@@ -68,6 +68,7 @@ export function Diagnostics() {
 
 const presets = [
   {label: '大模型 LLM（OpenAI 兼容）', type: 'llm', base_url: 'https://api.openai.com/v1', model: 'gpt-4o-mini', api_style: 'openai_compat', hint: '用于视频理解、脚本与混剪编排；需支持图片输入。可换成任何 OpenAI 兼容服务（改地址和模型名）。', pricing: 'https://openai.com/api/pricing/'},
+  {label: '本地网关 / 订阅接入（GPT-Load 等 OpenAI 兼容网关）', type: 'llm', base_url: 'http://127.0.0.1:3001/v1', model: 'gpt-4o-mini', api_style: 'openai_compat', hint: '把你在本机网关里配置好的渠道（API Key 或订阅账号）当作大模型使用：地址填网关的 /v1 地址，Key 填网关里创建的 AccessKey。保存后到「设置」点“测试连接 / 获取模型”，再点选一个可用模型。使用订阅账号可能违反对应服务商的使用条款，请自行评估风险，详见 docs/接入AI订阅与网关.md。', pricing: ''},
   {label: '语音转写 ASR', type: 'asr', base_url: 'https://api.openai.com/v1', model: 'whisper-1', api_style: 'openai_compat', hint: '给参考视频和配音生成词级时间。', pricing: 'https://openai.com/api/pricing/'},
   {label: '配音 TTS', type: 'tts', base_url: 'https://api.openai.com/v1', model: 'tts-1', api_style: 'openai_compat', hint: '把新台词合成为语音。', pricing: 'https://openai.com/api/pricing/'},
   {label: '图片生成', type: 'image_gen', base_url: 'https://api.openai.com/v1', model: 'gpt-image-1', api_style: 'openai_compat', hint: '为人物/产品生成一致的定妆图。', pricing: 'https://openai.com/api/pricing/'},
@@ -126,7 +127,7 @@ export function Setup({onDone}: {onDone?: () => void}) {
     <h3>② 配置 AI 服务（按需，可稍后在「设置」里改）</h3>
     <p>Key 只保存在你自己的电脑里。没有某项服务可以先跳过，对应功能暂时不可用。</p>
     <label>服务类型<select value={sel} onChange={e => pick(Number(e.target.value))}>{presets.map((p, i) => <option key={p.label} value={i}>{p.label}</option>)}</select></label>
-    <p><small>{preset.hint}{' '}<a href={preset.pricing} target="_blank" rel="noreferrer">查看价格页</a>（价格以服务商官网为准，请据此在高级配置里填写单价，费用估算才准确）</small></p>
+    <p><small>{preset.hint}{' '}{preset.pricing ? <><a href={preset.pricing} target="_blank" rel="noreferrer">查看价格页</a>（价格以服务商官网为准，请据此在高级配置里填写单价，费用估算才准确）</> : <a href="https://github.com/tbphp/gpt-load" target="_blank" rel="noreferrer">GPT-Load 项目主页</a>}</small></p>
     <form onSubmit={e => {e.preventDefault(); void saveProvider();}}>
       <label>接口地址<input required value={form.base_url} onChange={e => setForm({...form, base_url: e.target.value})}/></label>
       <label>模型<input value={form.model} onChange={e => setForm({...form, model: e.target.value})}/></label>

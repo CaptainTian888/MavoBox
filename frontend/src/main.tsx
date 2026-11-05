@@ -32,6 +32,7 @@ function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
+  const [models, setModels] = useState<Record<string, string[]>>({});
   const [url, setUrl] = useState('');
   const [seconds, setSeconds] = useState(5);
   const [path, setPath] = useState('');
@@ -99,6 +100,8 @@ function App() {
       {providers.map(p => <article key={p.id}><strong>{p.name}</strong> · {p.type} · {p.model}<p>{p.base_url} · Key {p.key_status}</p>
         <button disabled={busy} onClick={() => {setEditing(p.id); setForm({type: p.type, name: p.name, base_url: p.base_url, model: p.model,api_style:p.api_style,extra:p.extra}); setExtra(JSON.stringify(p.extra,null,2)); setKey('');}}>编辑</button>
         <button disabled={busy} onClick={() => void run(async () => {await api(`/providers/${p.id}`, 'DELETE'); if (editing === p.id) {setEditing(null); setForm(empty); setKey('');}})}>删除</button>
+        {p.api_style === 'openai_compat' && <button disabled={busy} onClick={() => void run(async () => {const r = await api<{models: string[]; count: number}>(`/providers/${p.id}/models`, 'POST'); setModels({...models, [p.id]: r.models});})}>测试连接 / 获取模型</button>}
+        {models[p.id] && <p>✅ 连接正常，共 {models[p.id].length} 个模型。点击即可选用：<br/>{models[p.id].slice(0, 60).map(m => <button key={m} type="button" disabled={busy} onClick={() => void run(async () => {await api(`/providers/${p.id}`, 'PUT', {type: p.type, name: p.name, base_url: p.base_url, model: m, api_style: p.api_style, extra: p.extra});})}>{m}</button>)}{models[p.id].length > 60 && <small> …还有 {models[p.id].length - 60} 个，可在上方「编辑」里直接填写</small>}</p>}
       </article>)}<h2>遇到问题？</h2><Diagnostics/></section>}
   </main>;
 }
