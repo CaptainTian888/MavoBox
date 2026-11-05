@@ -21,9 +21,11 @@ jobs:
           - os: windows-latest
             bundles: nsis
             ffmpeg_var: FFMPEG_WIN_URL
+            gptload: windows-amd64
           - os: macos-latest      # Apple Silicon
             bundles: dmg,app
             ffmpeg_var: FFMPEG_MAC_URL
+            gptload: macos-arm64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +41,11 @@ jobs:
           mkdir -p ffbin && curl -fsSL "$URL" -o ff.zip && unzip -o -j ff.zip '*ffmpeg*' '*ffprobe*' -d ffbin
           chmod +x ffbin/* || true
           echo "FFMPEG_BIN_DIR=$PWD/ffbin" >> "$GITHUB_ENV"
+      - name: Fetch latest GPT-Load (verified)
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/fetch_gptload.py --platform ${{ matrix.gptload }}
       - name: Package backend (Windows)
         if: runner.os == 'Windows'
         shell: cmd

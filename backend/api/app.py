@@ -29,6 +29,8 @@ from api.remix import router as remix_router
 from modules.remix.service import RemixService
 from api.clone import router as clone_router
 from api.qa import qa_router
+from api.gateway import gateway_router
+from modules.gateway_manager import GatewayManager
 from modules.clone.service import CloneService, OPERATIONS
 
 
@@ -126,7 +128,7 @@ class SecretInput(Input):
     key: SecretStr
 
 
-def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now=None, remix_client_factory=None, clone_factories=None, license_public_key=None):
+def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now=None, remix_client_factory=None, clone_factories=None, license_public_key=None, gateway_options=None):
     settings = settings or Settings()
     secrets = secrets or KeyringSecrets()
 
@@ -157,17 +159,22 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
                                       'account_login': login_handler},
                                     settings.concurrency, settings.retries, on_finished=task_finished)
         app.state.scheduler.start()
+        app.state.gateway.autostart()   # only if the user enabled the built-in gateway
         try:
             yield
         finally:
+            app.state.gateway.stop()
             app.state.queue.close()
             app.state.scheduler.close()
 
     app = FastAPI(title='MAVO BOX', lifespan=lifespan)
+    app.state.secrets = secrets
+    app.state.gateway = GatewayManager(settings, secrets, **(gateway_options or {}))
     app.include_router(publisher_router(app))
     app.include_router(remix_router(app))
     app.include_router(clone_router(app))
     app.include_router(qa_router(app))
+    app.include_router(gateway_router(app))
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', 'testserver'])
 
     @app.middleware('http')
@@ -218,7 +225,7 @@ def create_app(settings=None, secrets=None, publisher_driver=None, publisher_now
 
     @app.get('/api/diagnostics')
     def get_diagnostics():
-        return diagnostics.build(app.state.db, settings, license_store.status(), installer)
+        return diagnostics.build(app.state.db, settings, license_store.status(), installer, app.state.gateway.status())
 
     @app.post('/api/diagnostics/open-logs')
     def open_logs():

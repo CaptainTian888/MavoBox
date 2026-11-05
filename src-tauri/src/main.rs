@@ -11,7 +11,37 @@ use std::sync::mpsc;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use tauri::webview::NewWindowResponse;
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+
+/// Port of the built-in GPT-Load gateway (same default and override as the Python backend).
+fn gateway_port() -> u16 {
+    std::env::var("MAVOBOX_GATEWAY_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(31001)
+}
+
+/// Only the built-in gateway's own loopback address may be opened in an in-app window.
+fn is_gateway_url(url: &tauri::Url) -> bool {
+    url.scheme() == "http" && url.host_str() == Some("127.0.0.1") && url.port() == Some(gateway_port())
+}
+
+/// Opens (or focuses) the GPT-Load console in its own app window. Created on a separate thread:
+/// building a window from inside the new-window callback can deadlock on Windows.
+fn open_console_window(app: tauri::AppHandle, url: tauri::Url) {
+    std::thread::spawn(move || {
+        if let Some(existing) = app.get_webview_window("gateway-console") {
+            let _ = existing.show();
+            let _ = existing.set_focus();
+            return;
+        }
+        let _ = WebviewWindowBuilder::new(&app, "gateway-console", WebviewUrl::External(url))
+            .title("GPT-Load 控制台 · MAVO BOX")
+            .inner_size(1180.0, 820.0)
+            .build();
+    });
+}
 
 struct Backend(Mutex<Option<Child>>);
 
@@ -157,9 +187,18 @@ fn main() {
         .setup(|app| {
             // Show a window right away (a small local "starting…" page) instead of nothing for the
             // seconds the backend needs; then point it at the backend, or at an error page.
+            let console_handle = app.handle().clone();
             let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("loading.html".into()))
                 .title("MAVO BOX")
                 .inner_size(1280.0, 860.0)
+                // window.open / target=_blank from the UI: the gateway console opens in an app window,
+                // anything else is refused (links never leave the app silently).
+                .on_new_window(move |url, _features| {
+                    if is_gateway_url(&url) {
+                        open_console_window(console_handle.clone(), url);
+                    }
+                    NewWindowResponse::Deny
+                })
                 .build()?;
             let handle = app.handle().clone();
             std::thread::spawn(move || {
@@ -190,6 +229,12 @@ fn main() {
         .expect("failed to build tauri app");
 
     app.run(|handle, event| {
+        // Closing the main window quits the app even if the gateway console window is still open.
+        if let RunEvent::WindowEvent { label, event: tauri::WindowEvent::Destroyed, .. } = &event {
+            if label == "main" {
+                handle.exit(0);
+            }
+        }
         if let RunEvent::Exit = event {
             if let Some(mut child) = handle.state::<Backend>().0.lock().unwrap().take() {
                 let _ = child.kill();

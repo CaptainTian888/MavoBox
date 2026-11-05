@@ -19,7 +19,7 @@ MAVO BOX is a **Windows / macOS desktop app** (a Tauri shell around a local Pyth
 | **Smart remix** | A batch of footage (files or a folder) + editing instructions + an LLM | Detects shots and extracts keyframes → the LLM understands the shots and outputs only an edit-timeline JSON → validated, then rendered to a 9:16 video by ffmpeg; the timeline is hand-editable |
 | **Accounts & publishing** | Local videos + caption / hashtags + a schedule + several TikTok accounts | One isolated browser environment and proxy per account, publishes on schedule; random staggering, concurrency / per-account / per-proxy mutual exclusion, retries, restart recovery, and hand-off to a human on captchas |
 
-Also included: a first-run wizard (environment check, one-click browser component install, AI-service presets), licence-code activation, and in-app auto-update. The LLM can point at any OpenAI-compatible endpoint, including a local gateway such as [GPT-Load](https://github.com/tbphp/gpt-load) (key pools, subscription channels), with a "test connection / list models" button.
+Also included: a first-run wizard (environment check, one-click browser component install, AI-service presets), licence-code activation, and in-app auto-update. The installer **bundles** the [GPT-Load](https://github.com/tbphp/gpt-load) local gateway (one-click on the "AI Subscription" page: key pools, subscription accounts; every build fetches and verifies the latest release), and the LLM can also point at any OpenAI-compatible endpoint, with a "test connection / list models" button.
 
 **Output quality & troubleshooting**
 - **Quality check**: one click to check any video for aspect ratio (9:16), duration, frame rate, black frames, frozen picture, silence, loudness and clipping, plus a 12-frame contact sheet. Available in the asset library, remix and clone pages.
@@ -160,7 +160,7 @@ On macOS use `scripts/build.sh` + `npx @tauri-apps/cli@2 build --bundles dmg,app
 | [Student manual](docs/学员手册.md) (Chinese) | Students | Install, activation, wizard, features, cost and compliance, FAQ |
 | [Teacher manual](docs/教师手册.md) (Chinese) | Teachers / release owners | Issuing licence codes, key custody, releases and auto-update, pre-distribution checklist |
 | [Feature & API reference](docs/功能与接口参考手册.md) (Chinese) | Developers / advanced users | Scheduler parameters, provider configuration formats and examples, budget and state machine, HTTP APIs |
-| [AI subscriptions & gateways](docs/接入AI订阅与网关.md) (Chinese) | Students / advanced users | Connect multi-key pools or subscription accounts through a local gateway such as GPT-Load, risks, troubleshooting |
+| [AI subscriptions & gateways](docs/接入AI订阅与网关.md) (Chinese) | Students / advanced users | Using the bundled GPT-Load gateway, connecting key pools or subscription accounts, risks, troubleshooting |
 | [Changelog](CHANGELOG.md) | Everyone | Release notes |
 | [Third-party notices](THIRD_PARTY_NOTICES.md) | Release owners | Dependency licences, ffmpeg provenance and checksums |
 | [Security policy](SECURITY.md) | Everyone | How to report vulnerabilities |

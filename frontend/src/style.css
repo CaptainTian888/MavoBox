@@ -17,3 +17,13 @@ aside { border: 2px solid #777; padding: 1rem; overflow-wrap: anywhere; }
 .clone-page audio { display: block; max-width: 100%; }
 .clone-page select[multiple] { min-height: 7rem; }
 .clone-page ol li { padding: .5rem 0; }
+
+/* Header switch for the built-in AI gateway */
+.gw-switch { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: .4rem 0 .8rem; padding: .35rem .7rem; border: 1px solid #cbd5e1; border-radius: 8px; width: fit-content; }
+.gw-switch label { display: inline-flex; align-items: center; gap: .45rem; cursor: pointer; font-weight: 600; }
+.gw-switch input[role="switch"] { appearance: none; width: 2.5rem; height: 1.35rem; border-radius: 1rem; background: #94a3b8; position: relative; cursor: pointer; transition: background .15s; margin: 0; }
+.gw-switch input[role="switch"]::after { content: ''; position: absolute; top: .15rem; left: .15rem; width: 1.05rem; height: 1.05rem; border-radius: 50%; background: #fff; transition: transform .15s; }
+.gw-switch input[role="switch"]:checked { background: #16a34a; }
+.gw-switch input[role="switch"]:checked::after { transform: translateX(1.15rem); }
+.gw-switch input[role="switch"]:disabled { opacity: .6; cursor: progress; }
+.gw-switch .gw-state { font-size: .9rem; color: #475569; }

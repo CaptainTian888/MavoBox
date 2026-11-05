@@ -50,7 +50,7 @@ def provider_summary(db):
     return out
 
 
-def build(db, settings, license_status, installer):
+def build(db, settings, license_status, installer, gateway=None):
     env = envmod.environment(settings.data_dir, installer)
     counts = {r['status']: r['n'] for r in db.all('SELECT status, COUNT(*) AS n FROM tasks GROUP BY status')}
     failures = db.all("SELECT kind, error, created_at FROM tasks WHERE status='failed' ORDER BY created_at DESC LIMIT 8")
@@ -65,6 +65,7 @@ def build(db, settings, license_status, installer):
         license=dict(licensed=license_status['licensed'], expires=license_status['expires'],
                      name_set=bool(license_status['name'])),
         providers=provider_summary(db),
+        gateway=({k: gateway.get(k) for k in ('available', 'enabled', 'running', 'version', 'port')} if gateway else None),
         tasks=counts,
         recent_failures=[dict(kind=f['kind'], error=logs.scrub(str(f['error'] or ''))[:300], at=f['created_at']) for f in failures],
         log_tail=logs.tail(settings.data_dir, 40),
@@ -84,6 +85,7 @@ def render_text(r) -> str:
         f"ffmpeg: {tool(r['ffmpeg'])}  ffprobe: {tool(r['ffprobe'])}  Chromium: {'OK' if r['chromium']['ok'] else '未安装/不完整'}",
         f"授权: {'已激活' if r['license']['licensed'] else '未激活'}  到期: {r['license']['expires'] or '永久/未知'}",
         f"AI 服务({len(r['providers'])}): " + '; '.join(f"{p['type']}/{p['style']}@{p['host']}:{p['model']}" for p in r['providers']),
+        f"内置网关: {('版本 ' + str(r['gateway']['version']) + ('，运行中' if r['gateway']['running'] else '，未运行') + ('，已启用' if r['gateway']['enabled'] else '，未启用')) if r['gateway'] and r['gateway']['available'] else '未内置'}",
         f"任务统计: {r['tasks']}",
         '最近失败任务:' if r['recent_failures'] else '最近失败任务: 无',
         *[f"  - {f['at']} {f['kind']}: {f['error']}" for f in r['recent_failures']],

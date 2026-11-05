@@ -6,6 +6,7 @@ import {Remix} from './remix';
 import {Clone} from './clone';
 import {Gate, Setup, needsSetup, Diagnostics} from './onboarding';
 import {QACheck} from './qa';
+import {Gateway, GatewaySwitch} from './gateway';
 
 type Task = {id: string; status: string; progress: number; error: string | null; attempts: number};
 type Asset = {id: string; path: string; type: string; duration: number; width: number | null; height: number | null};
@@ -65,9 +66,11 @@ function App() {
   }
   return <main>
     <header><h1><img src="/favicon.svg" alt="" width="36" height="36" style={{verticalAlign: 'middle', marginRight: '.5rem'}}/>MAVO BOX <small>本地视频工具</small></h1><p>下载片段、爆款克隆、智能混剪与多账号定时发布</p></header>
-    <nav>{['下载', '素材库', '混剪', '爆款克隆', '账号', '发布', '设置', '向导'].map(p => <button key={p} aria-current={page === p ? 'page' : undefined} onClick={() => {setPage(p); setKey('');}}>{p}</button>)}</nav>
+    <GatewaySwitch/>
+    <nav>{['下载', '素材库', '混剪', '爆款克隆', '账号', '发布', 'AI 订阅', '设置', '向导'].map(p => <button key={p} aria-current={page === p ? 'page' : undefined} onClick={() => {setPage(p); setKey('');}}>{p}</button>)}</nav>
     {error && <p role="alert" className="error">{error}</p>}{notice && <p role="status">{notice}</p>}
     {(page === '账号' || page === '发布') && <Publisher page={page}/>}
+    {page === 'AI 订阅' && <Gateway/>}
     {page === '向导' && <Setup onDone={() => setPage('下载')}/>}
     {page === '混剪' && <Remix/>}
     {page === '爆款克隆' && <Clone/>}
