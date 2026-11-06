@@ -119,7 +119,7 @@ Development mode does not require a licence code by default; set `TIKTOL_REQUIRE
 
 ```powershell
 cd backend
-uv run pytest -q          # baseline: 148 passed, 1 skipped (the skipped case needs symlink privileges)
+uv run pytest -q          # baseline: 165 passed, 1 skipped (the skipped case needs symlink privileges)
 cd ..\frontend
 npm run build             # tsc type-check + vite build
 ```

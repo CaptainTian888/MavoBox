@@ -119,7 +119,7 @@ cd frontend; npm run dev
 
 ```powershell
 cd backend
-uv run pytest -q          # 基线：148 passed, 1 skipped（跳过的是需要符号链接权限的用例）
+uv run pytest -q          # 基线：165 passed, 1 skipped（跳过的是需要符号链接权限的用例）
 cd ..\frontend
 npm run build             # tsc 类型检查 + vite 构建
 ```
